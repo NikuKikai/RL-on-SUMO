@@ -1,4 +1,5 @@
 import torch
+from torch import nn
 
 # class ConvDQN(nn.Module):
 #     '''
@@ -37,18 +38,15 @@ class DQN(nn.Module):
     def __init__(self, inputs, outputs):
         super(DQN, self).__init__()
         self.fc1 = nn.Linear(inputs, 64)
-        self.bn1 = nn.BatchNorm1d(64)
         self.relu1 = nn.ReLU()
         self.fc2 = nn.Linear(64, 32)
-        self.fc2 = nn.BatchNorm1d(32)
         self.relu2 = nn.ReLU()
         self.fc3 = nn.Linear(32, 16)
-        self.fc3 = nn.BatchNorm1d(16)
         self.relu3 = nn.ReLU()
         self.head = nn.Linear(16, outputs)
 
     def forward(self, x):
-        x = self.relu1(self.bn1(self.fc1(x)))
-        x = self.relu2(self.bn2(self.fc2(x)))
-        x = self.relu3(self.bn3(self.fc3(x)))
+        x = self.relu1(self.fc1(x))
+        x = self.relu2(self.fc2(x))
+        x = self.relu3(self.fc3(x))
         return self.head(x.view(x.size(0), -1))

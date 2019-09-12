@@ -13,10 +13,13 @@ import torch.optim as optim
 import torch.nn.functional as F
 import torchvision.transforms as T
 from replay_memory import Transition
+from replay_memory import ReplayMemory
 
-class fixed_target_Agent():
+class Fixed_Q_Targets_Agent():
     '''
-    this clas implements Fixed-q target agent with pytorch
+    This agent implements Fixed Q-Targets algorithm. There are two deep networks.
+    Policy network - to predict Q of a given action, value a state. i.e. Q(s,a)
+    Target network - to predict Q values of action of the next state. i.e. max Q(s', a') for loss calculation.
     '''
     def __init__(self, state_size, n_actions, device='cpu'):
         # Get number of actions from gym action space
@@ -32,6 +35,10 @@ class fixed_target_Agent():
         self.batch_size = 128
         self.discount = 0.999
 
+        # Env params
+        self.n_actions = n_actions
+        self.state_size = state_size
+
         # Deep q networks
         self.policy_net = DQN(state_size, n_actions).to(device)
         self.target_net = DQN(state_size, n_actions).to(device)
@@ -41,25 +48,33 @@ class fixed_target_Agent():
         self.optimizer = optim.RMSprop(self.policy_net.parameters())
         self.memory = ReplayMemory(10000)
 
+    def add_to_memory(self, state, action, next_state, reward):
+        state = torch.from_numpy(state)
+        action = torch.tensor([action])
+        next_state = torch.from_numpy(next_state)
+        reward = torch.tensor([reward])
+        self.memory.push(state, action, next_state, reward)
+
     def select_action(self, state):
-        global steps_done
         sample = random.random()
-        eps_threshold = self.exp_end + (self.exp_start - self.eps_end) * \
+        eps_threshold = self.eps_end + (self.eps_start - self.eps_end) * \
                         math.exp(-1. * self.steps_done / self.eps_decay)
-        steps_done += 1
+        self.steps_done += 1
         if sample > eps_threshold:
             with torch.no_grad():
                 # t.max(1) will return largest column value of each row.
                 # second column on max result is index of where max element was
                 # found, so we pick action with the larger expected reward.
+                state = torch.from_numpy(state).to(self.device) # Convert to tensor.
+                state = state.unsqueeze(0) # Add batch dimeniton.
                 return self.policy_net(state).max(1)[1].view(1, 1)
         else:
-            return torch.tensor([[random.randrange(n_actions)]], device=self.device, dtype=torch.long)
+            return torch.tensor([[random.randrange(self.n_actions)]], device=self.device, dtype=torch.long).item()
 
     def optimize_model(self):
         if len(self.memory) < self.batch_size:
             return
-        transitions = memory.sample(self.batch_size)
+        transitions = self.memory.sample(self.batch_size)
         # This converts batch-array of Transitions
         # to Transition of batch-arrays.
         batch = Transition(*zip(*transitions))
@@ -68,12 +83,12 @@ class fixed_target_Agent():
         # (a final state would've been the one after which simulation ended)
         non_final_mask = torch.tensor(tuple(map(lambda s: s is not None,
                                       batch.next_state)), device=self.device,
-                                      dtype=torch.uint8)
+                                      dtype=torch.bool)
         non_final_next_states = torch.cat([s for s in batch.next_state
-                                           if s is not None])
-        state_batch = torch.cat(batch.state)
-        action_batch = torch.cat(batch.action)
-        reward_batch = torch.cat(batch.reward)
+                                           if s is not None]).view(self.batch_size,-1)
+        state_batch = torch.cat(batch.state).view(self.batch_size,-1)
+        action_batch = torch.cat(batch.action).view(self.batch_size,-1)
+        reward_batch = torch.cat(batch.reward).view(self.batch_size,-1)
 
         # Compute Q(s_t, a) - the model computes Q(s_t), then we select the
         # columns of actions taken. These are the actions which would've been taken
