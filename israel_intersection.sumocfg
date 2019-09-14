@@ -1,0 +1,6 @@
+<configuration>
+    <input>
+       <net-file value="israel_single_intersection.net.xml"/>
+       <route-files value="israel_single_intersection.trip.xml"/>
+    </input>
+</configuration>

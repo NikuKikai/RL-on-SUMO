@@ -2,7 +2,7 @@ import os
 import sys
 import traci
 import numpy as np
-
+from rl_args import fixed_q_targets_args
 
 class SumoEnv:
     place_len = 7.5
@@ -10,10 +10,18 @@ class SumoEnv:
     lane_len = 10
     lane_ids = ['-gneE0_0', '-gneE0_1', '-gneE1_0', '-gneE1_1', '-gneE2_0', '-gneE2_1', '-gneE3_0', '-gneE3_1']
 
-    def __init__(self, label='default', gui_f=False):
+    def __init__(self, args, label='default', max_steps=1000 ,sim_steps=10 ,gui_f=False):
         self.label = label
         self.wt_last = 0.
         self.ncars = 0
+        self.max_steps = args.sim_max_steps
+
+        # How much simulation steps perfromed in current episode.
+        self.steps_done = 0
+        # How much simulation steps perfromed each step_d call.
+        self.sim_steps = args.sim_steps
+        # How to punish for teleport
+        self.teleport_punishment = args.teleport_punishment
 
         if 'SUMO_HOME' in os.environ:
             tools = os.path.join(os.environ['SUMO_HOME'], 'tools')
@@ -28,6 +36,8 @@ class SumoEnv:
         return
 
     def get_state_d(self):
+        # Prepare empty state of fixed size.
+        # The state contains 8 discrete lines + one hot vec of phase.
         state = np.zeros(self.lane_len * 8 + 4, dtype=np.float32)
 
         for ilane in range(0, 8):
@@ -48,42 +58,62 @@ class SumoEnv:
                     continue
                 pos = np.clip(pos, 0., self.lane_len - 1. - 1e-6)
                 ipos = int(pos)
-                state[int(ilane * self.lane_len + ipos)] += 1. - pos + ipos
+
+                # Each car exist at the same time in two cells, with some certainty.
+                # In this way we can represent continuous position of a car on a discrete grid.
+                state[int(ilane * self.lane_len + ipos)] += 1. - (pos - ipos)
                 state[int(ilane * self.lane_len + ipos + 1)] += pos - ipos
+
+            # Adding phase as one hot vector to state.
             state[self.lane_len * 8:self.lane_len * 8+4] = np.eye(4)[traci.trafficlight.getPhase('gneJ00')]
         return state
 
     def step_d(self, action):
+        self.steps_done += self.sim_steps
         done = False
         # traci.switch(self.label)
 
         action = np.squeeze(action)
         traci.trafficlight.setPhase('gneJ00', action)
 
-        traci.simulationStep()
-        traci.simulationStep()
+        # Perform multiple steps of simulation.
+        teleported = 0
+        for _ in range(self.sim_steps):
+            traci.simulationStep()
+            num = traci.simulation.getStartingTeleportNumber()
+            if num > 0:
+                print('=============================  starting teleport = ', num)
+                teleported = self.teleport_punishment
 
         self.ncars += traci.simulation.getDepartedNumber()
 
         state = self.get_state_d()
 
         wt = 0
+
+        # Reward is calculated by summing waiting time on all lanes.
         for ilane in range(0, 8):
             lane_id = self.lane_ids[ilane]
             wt += traci.lane.getWaitingTime(lane_id)
+        #print("waiting time = ", wt)
         reward = - (wt - self.wt_last)*0.004
 
-        if self.ncars > 250:
+        # If vehicles teleported it's very bad.
+        reward -= teleported
+
+        if self.ncars > 250 or self.steps_done >= self.max_steps:
             done = True
+            self.steps_done = 0
 
         return state, reward, done, np.array([[reward]])
 
-    def reset(self):
+    def reset(self, heatup=50):
         self.wt_last = 0.
         self.ncars = 0
-        traci.start(self.sumoCmd, label=self.label)
+        traci.start(self.sumoCmd, label=self.label, )
         traci.trafficlight.setProgram('gneJ00', '0')
-        traci.simulationStep()
+        for _ in range(heatup):
+            traci.simulationStep()
         return self.get_state_d()
 
     def close(self):

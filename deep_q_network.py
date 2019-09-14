@@ -37,11 +37,11 @@ class DQN(nn.Module):
     '''
     def __init__(self, inputs, outputs):
         super(DQN, self).__init__()
-        self.fc1 = nn.Linear(inputs, 64)
+        self.fc1 = nn.Linear(inputs, 128)
         self.relu1 = nn.ReLU()
-        self.fc2 = nn.Linear(64, 32)
+        self.fc2 = nn.Linear(128, 64)
         self.relu2 = nn.ReLU()
-        self.fc3 = nn.Linear(32, 16)
+        self.fc3 = nn.Linear(64, 16)
         self.relu3 = nn.ReLU()
         self.head = nn.Linear(16, outputs)
 
