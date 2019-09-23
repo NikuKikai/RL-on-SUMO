@@ -75,10 +75,10 @@ class code_sanity_args():
     discount = 0.8 # dsicount of future reward.
 
     # Replay params
-    replay_size = 500 # capacity of replay.
+    replay_size = 5000 # capacity of replay.
 
     # Deep q networks params
-    batch_size = 64 # batch size feed into deep q net.
+    batch_size = 2048 # batch size feed into deep q net.
     optimizer = 'rmsprop' # Adam works bad.
 
     # Simulation params
