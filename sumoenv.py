@@ -31,7 +31,9 @@ class SumoEnv:
 
         exe = 'sumo-gui.exe' if gui_f else 'sumo.exe'
         sumoBinary = os.path.join(os.environ['SUMO_HOME'], 'bin', exe)
-        self.sumoCmd = [sumoBinary, '-c', 'intersection.sumocfg']
+        self.sumoCmd = [sumoBinary, '-c', 'simulations\\intersection.sumocfg']
+
+
 
         return
 

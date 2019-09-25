@@ -303,7 +303,6 @@ class Fixed_Q_Targets_Agent():
 
         # Compute Huber loss
         loss = F.smooth_l1_loss(state_action_values, expected_state_action_values)
-        #loss = F.mse_loss(state_action_values, expected_state_action_values.unsqueeze(1))
 
         # Optimize the model
         self.optimizer.zero_grad()
@@ -330,5 +329,4 @@ class Double_DQN_Agent():
 class Dueling_DQN_Agent():
     '''
     Dueling Double DQN Agents
-
     '''
