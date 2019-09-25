@@ -263,9 +263,11 @@ class Fixed_Q_Targets_Agent():
                 # found, so we pick action with the larger expected reward.
                 state = torch.from_numpy(state).to(self.device) # Convert to tensor.
                 state = state.unsqueeze(0) # Add batch dimeniton.
-                return self.policy_net(state).max(1)[1].view(1, 1)
+                action = self.policy_net(state).max(1)[1].view(1, 1)
         else:
-            return torch.tensor([[random.randrange(self.n_actions)]], device=self.device, dtype=torch.long).item()
+            action = torch.tensor([[random.randrange(self.n_actions)]], device=self.device, dtype=torch.long).item()
+
+        return action
 
     def optimize_model(self):
         if len(self.memory) < self.batch_size:
