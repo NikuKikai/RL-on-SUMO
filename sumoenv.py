@@ -97,6 +97,13 @@ class SumoEnv:
 
     def calc_reward(self):
         '''
+        The waiting time of a vehicle is defined as the time (in seconds) spent with a
+        speed below 0.1m/s since the last time it was faster than 0.1m/s.
+        (basically, the waiting time of a vehicle is reset to 0 every time it moves).
+        A vehicle that is stopping intentionally with a <stop> does not accumulate waiting time. (c) Traci documentation.
+
+        https://sumo.dlr.de/pydoc/traci._vehicle.html#VehicleDomain-getWaitingTime
+
         This function calculates reward. We can use rewards of two types:
         1) Absolute waiting time - just a sum of wait times at current time point.
         2) Relative wait time - An increase or decrease of wait time relatively to previous state.
