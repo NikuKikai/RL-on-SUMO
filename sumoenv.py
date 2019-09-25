@@ -4,6 +4,7 @@ import traci
 import numpy as np
 from rl_args import fixed_q_targets_args
 
+
 class SumoEnv:
     place_len = 7.5
     place_offset = 8.50
@@ -79,35 +80,40 @@ class SumoEnv:
         traci.trafficlight.setPhase('gneJ00', action)
 
         # Perform multiple steps of simulation.
-        teleported = 0
         for _ in range(self.sim_steps):
             traci.simulationStep()
-            num = traci.simulation.getStartingTeleportNumber()
-            if num > 0:
-                print('=============================  starting teleport = ', num)
-                teleported = self.teleport_punishment
 
         self.ncars += traci.simulation.getDepartedNumber()
 
         state = self.get_state_d()
 
-        wt = 0
-
-        # Reward is calculated by summing waiting time on all lanes.
-        for ilane in range(0, 8):
-            lane_id = self.lane_ids[ilane]
-            wt += traci.lane.getWaitingTime(lane_id)
-        #print("waiting time = ", wt)
-        reward = - (wt - self.wt_last)*0.004
-
-        # If vehicles teleported it's very bad.
-        reward -= teleported
+        reward, _ = self.calc_reward()
 
         if self.ncars > 250 or self.steps_done >= self.max_steps:
             done = True
             self.steps_done = 0
 
         return state, reward, done, np.array([[reward]])
+
+    def calc_reward(self):
+        '''
+        This function calculates reward. We can use rewards of two types:
+        1) Absolute waiting time - just a sum of wait times at current time point.
+        2) Relative wait time - An increase or decrease of wait time relatively to previous state.
+        Both work well. Absolute reward is more stable and informative. See details in report.
+        :return: absolute_reward, relative_reward
+        '''
+        wt = 0
+
+        for ilane in range(0, 8):
+            lane_id = self.lane_ids[ilane]
+            wt += traci.lane.getWaitingTime(lane_id)
+
+        relative_reward = - (wt - self.wt_last) * 50 #scale factor
+        absolute_reward = - wt * 0.004 #scale factor
+
+        self.wt_last = wt
+        return absolute_reward, relative_reward
 
     def reset(self, heatup=50):
         self.wt_last = 0.
