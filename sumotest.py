@@ -26,7 +26,7 @@ for _ in range(args.episodes):
     rewards_list = []
     while not done:
         action = agent.select_action(state)
-        next_state, reward, done, rewards = env_train.step_d(action)
+        next_state, reward, done, rewards = env_train.do_step(action)
         rewards_list.append(reward)
         agent.add_to_memory(state, action, next_state, reward) # TODO: missing done
         agent.optimize_model() # try to optimize if enough samples in memory.

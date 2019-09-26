@@ -38,8 +38,12 @@ class SumoEnv:
 
         # A data structure which represents the roads conncetions
         self.road_structure = {}
+        self.parse_env()
 
         return
+
+    def get_road_structure(self):
+        return self.road_structure
 
     def get_state_probabilistic_position(self):
         '''
@@ -94,29 +98,40 @@ class SumoEnv:
             env_state[intersection] = state
         return env_state
 
-    def step_d(self, action):
+    def do_step(self, action_dict):
+        '''
+        This method applies an action on the environment, i.e. set a phase
+        on each of the Intersections.
+        :param action: A dictionary:    {'intersection_name1': 1,
+                                        'intersection_name2': 3,...}
+        :return: state - a dictionary:  {'intersection_name1': state,
+                                        'intersection_name2': state,...},
+                reward - a dictionary:  {'intersection_name1': reward,
+                                        'intersection_name2': reward,...},
+                done - either the simulation ended.
+        '''
         self.steps_done += self.sim_steps
         done = False
-        # traci.switch(self.label)
 
-        action = np.squeeze(action)
-        traci.trafficlight.setPhase('gneJ00', action)
+        # Apply actions on intersection one by one.
+        for intersection in self.road_structure:
+            action = np.squeeze(action_dict[intersection])
+            traci.trafficlight.setPhase(intersection, action)
 
         # Perform multiple steps of simulation.
         for _ in range(self.sim_steps):
             traci.simulationStep()
 
-        self.ncars += traci.simulation.getDepartedNumber()
-
-        state = self.get_state_probabilistic_position()
+        # Get the new_state of all intersections.
+        new_state = self.get_state_probabilistic_position()
 
         reward, _ = self.calc_reward()
 
-        if self.ncars > 250 or self.steps_done >= self.max_steps:
+        if self.steps_done >= self.max_steps:
             done = True
             self.steps_done = 0
 
-        return state, reward, done, np.array([[reward]])
+        return new_state, reward, done
 
     def calc_reward(self):
         '''
@@ -131,36 +146,32 @@ class SumoEnv:
         1) Absolute waiting time - just a sum of wait times at current time point.
         2) Relative wait time - An increase or decrease of wait time relatively to previous state.
         Both work well. Absolute reward is more stable and informative. See details in report.
-        :return: absolute_reward, relative_reward
+        :return: absolute_reward_dict - a dictionary:  {'intersection_name1': absolute_reward,
+                                                        'intersection_name2': absolute_reward,...},
+                 relative_reward_dict - a dictionary:  {'intersection_name1': relative_reward,
+                                                        'intersection_name2': relative_reward,...},
         '''
-        wt = 0
+        absolute_reward_dict = {}
+        relative_reward_dict = {}
+        for intersection in self.road_structure:
+            wt = 0
 
-        for ilane in range(0, 8):
-            lane_id = self.lane_ids[ilane]
-            wt += traci.lane.getWaitingTime(lane_id)
+            for lane_id, _ in self.road_structure[intersection]['lanes']:
+                wt += traci.lane.getWaitingTime(lane_id)
 
-        relative_reward = - (wt - self.wt_last) * 50 #scale factor
-        absolute_reward = - wt * 0.004 #scale factor
+            relative_reward = - (wt - self.wt_last) * 50 #scale factor
+            absolute_reward = - wt * 0.004 #scale factor
 
-        self.wt_last = wt
-        return absolute_reward, relative_reward
+            self.wt_last = wt
 
-    def reset(self, heatup=50):
-        self.wt_last = 0.
-        self.ncars = 0
-        traci.start(self.sumoCmd, label=self.label, )
-        try:
-            traci.trafficlight.setProgram('gneJ00', '0')
-        except:
-            print("No program set.")
+            absolute_reward_dict[intersection] = absolute_reward
+            relative_reward_dict[intersection] = relative_reward
 
-        self.parse_env()
-
-        for _ in range(heatup):
-            traci.simulationStep()
-        return self.get_state_probabilistic_position()
+        return absolute_reward_dict, relative_reward_dict
 
     def parse_env(self):
+        traci.start(self.sumoCmd, label=self.label, )
+
         junctions = list(traci.trafficlight.getIDList())
         for junc in junctions:
             max_len = 0
@@ -191,9 +202,12 @@ class SumoEnv:
 
             phase_list = []
             for idx in range(num_of_phases):
-                phase_list.append((idx, traci.trafficlight.getCompleteRedYellowGreenDefinition(junc)[0].phases[idx].state))
+                phase_list.append(
+                    (idx, traci.trafficlight.getCompleteRedYellowGreenDefinition(junc)[0].phases[idx].state))
             self.road_structure[junc]['phases_description'] = phase_list
         self.print_env()
+
+        traci.close()
 
     def _remove_repeating_lanes(self, lanes):
         '''
@@ -215,6 +229,19 @@ class SumoEnv:
             for key in self.road_structure[junc]:
                 print('=== ', key, ' ===')
                 print(self.road_structure[junc][key])
+
+    def reset(self, heatup=50):
+        self.wt_last = 0.
+        self.ncars = 0
+        traci.start(self.sumoCmd, label=self.label, )
+        try:
+            traci.trafficlight.setProgram('gneJ00', '0')
+        except:
+            print("No program set.")
+
+        for _ in range(heatup):
+            traci.simulationStep()
+        return self.get_state_probabilistic_position()
 
     def close(self):
         traci.close()
