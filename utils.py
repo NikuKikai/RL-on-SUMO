@@ -1,7 +1,6 @@
 import os
 import shutil
 import torch
-import torch.nn.utils.rnn
 
 
 def save_checkpoint(state, is_best,  checkpoint):
