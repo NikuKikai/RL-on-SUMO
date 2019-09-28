@@ -14,7 +14,7 @@ from replay_memory import Transition
 from replay_memory import ReplayMemory
 from datetime import datetime
 from random import randrange
-
+import utils
 
 
 class Random_Agent():
@@ -39,7 +39,7 @@ class Random_Agent():
         Save cumulative rewards to file
         '''
         # TODO: write smarter logging interface.
-        with open('random_agent_dump.txt', 'a') as file:
+        with open('ra_agent_dump.txt', 'a') as file:
             file.write(str(np.mean(np.array(self.rewards_list))) + '\n')
         self.rewards_list = []
 
@@ -210,6 +210,16 @@ class DQN_Agent(RL_Agent):
             param.grad.data.clamp_(-1, 1)
         self.optimizer.step()
 
+        # Saving a checkpoint is done in the following way :
+        # Should we consider adding another fields?
+        # define is_best variable to indicate weather the current agent is the best so far
+        # utils.save_checkpoint({'epoch': should this be saved? what is epoch?,
+        #                         'policy_net': self.policy_net.state_dict(),
+        #                         'optimizer' : self.optimizer,
+        #                         'train_loss': loss}
+        #                         is_best =is_best,
+        #                         checkpoint="weights_and_val")
+
 
 class Fixed_Q_Targets_Agent():
     '''
@@ -344,6 +354,18 @@ class Fixed_Q_Targets_Agent():
         if self.steps_done % self.target_update == 0:
             print('================ Target updated ===============')
             self.target_net.load_state_dict(self.policy_net.state_dict())
+
+
+        # Saving a checkpoint is done in the following way :
+        # Should we consider adding another fields?
+        # define is_best variable to indicate weather the current agent is the best so far
+        # utils.save_checkpoint({'epoch': should this be saved? what is epoch?,
+        #                         'policy_net': self.policy_net.state_dict(),
+        #                         'target_net': self.target_net.state_dict(),
+        #                         'optimizer' : self.optimizer,
+        #                         'train_loss': loss}
+        #                         is_best =is_best,
+        #                         checkpoint="weights_and_val")
 
 
 class Double_DQN_Agent():
