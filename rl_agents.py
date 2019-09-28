@@ -39,7 +39,7 @@ class Random_Agent():
         Save cumulative rewards to file
         '''
         # TODO: write smarter logging interface.
-        with open('ra_agent_dump.txt', 'a') as file:
+        with open('random_agent_dump.txt', 'a') as file:
             file.write(str(np.mean(np.array(self.rewards_list))) + '\n')
         self.rewards_list = []
 
