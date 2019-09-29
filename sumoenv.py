@@ -3,28 +3,26 @@ import sys
 import traci
 import numpy as np
 from math import ceil
+import seaborn as sb
+import matplotlib.pyplot as plt
+from datetime import datetime
 from rl_args import fixed_q_targets_args
 
 
 class SumoEnv:
-    place_len = 7.5
-    place_offset = 8.50
-
-    lane_ids = ['-gneE0_0', '-gneE0_1', '-gneE1_0', '-gneE1_1', '-gneE2_0', '-gneE2_1', '-gneE3_0', '-gneE3_1']
-
-    def __init__(self, args, path_to_sim_file='simulations\\intersection.sumocfg', label='default', max_steps=1000 ,sim_steps=10 ,gui_f=False):
-        self.label = label
+    def __init__(self, args, path_to_sim_file='simulations\\intersection.sumocfg', gui=False):
         self.wt_last = 0.
         self.ncars = 0
         self.max_steps = args.sim_max_steps
         self.path_to_sim_file = path_to_sim_file
 
+        self.state_type = args.state_type
+
         # How much simulation steps perfromed in current episode.
         self.steps_done = 0
         # How much simulation steps perfromed each step_d call.
         self.sim_steps = args.sim_steps
-        # How to punish for teleport
-        self.teleport_punishment = args.teleport_punishment
+
 
         if 'SUMO_HOME' in os.environ:
             tools = os.path.join(os.environ['SUMO_HOME'], 'tools')
@@ -32,9 +30,9 @@ class SumoEnv:
         else:
             sys.exit("please declare environment variable 'SUMO_HOME'")
 
-        exe = 'sumo-gui.exe' if gui_f else 'sumo.exe'
+        exe = 'sumo-gui.exe' if gui else 'sumo.exe'
         sumoBinary = os.path.join(os.environ['SUMO_HOME'], 'bin', exe)
-        self.sumoCmd = [sumoBinary, '-c', self.path_to_sim_file]
+        self.sumoCmd = [sumoBinary, '-c', self.path_to_sim_file, '--no-warnings'] #,'--no-step-log',
 
         # A data structure which represents the roads conncetions
         self.road_structure = {}
@@ -45,7 +43,66 @@ class SumoEnv:
     def get_road_structure(self):
         return self.road_structure
 
-    def get_state_probabilistic_position(self):
+    def get_dimensions(self):
+        '''
+        This function returns two important properties for each intersection:
+        1) Size of the vector representing the state.
+        2) number of available actions.
+        :return: dictionary of tuples.
+        '''
+        dim_dict = {}
+        for intersection in self.road_structure:
+            num_of_actions = self.road_structure[intersection]['num_of_phases']
+            num_of_lanes = self.road_structure[intersection]['num_of_lanes']
+            lane_len = self.road_structure[intersection]['lane_len']
+
+            if self.state_type == 'position':
+                dim_dict[intersection] = (lane_len * num_of_lanes + num_of_actions, num_of_actions)
+            elif self.state_type == 'density':
+                dim_dict[intersection] = (num_of_lanes + num_of_actions, num_of_actions)
+            else:
+                raise NotImplementedError
+
+        return dim_dict
+
+    def get_state(self):
+        if self.state_type == 'density':
+            return self._get_state_density()
+        elif self.state_type == 'position':
+            return self._get_state_probabilistic_position()
+        else:
+            raise NotImplementedError
+
+    def _get_state_density(self):
+        '''
+        This function calculates a state of each intersection.
+        The state representation is lane occupancy.
+        https://sumo.dlr.de/pydoc/traci._lane.html#LaneDomain-getLastStepOccupancy
+        :return: A dictionary: {'intersection_name1': state,
+                                'intersection_name2': state,...}
+        '''
+        env_state = {}
+
+        for intersection in self.road_structure:
+            num_of_phases = self.road_structure[intersection]['num_of_phases']
+            num_of_lanes = self.road_structure[intersection]['num_of_lanes']
+
+            # Prepare empty state of fixed size.
+            # TODO: consider moving this to parsing part. The empty state is same during all time...
+            state = np.zeros(num_of_lanes + num_of_phases, dtype=np.float32)
+
+            for ilane, (lane_id, _) in enumerate(self.road_structure[intersection]['lanes']):
+
+                state[ilane] = traci.lane.getLastStepOccupancy(lane_id)
+
+                # Adding phase as one hot vector to state.
+                state[num_of_lanes: num_of_lanes + num_of_phases] = \
+                    np.eye(num_of_phases)[traci.trafficlight.getPhase(intersection)]
+
+            env_state[intersection] = state
+        return env_state
+
+    def _get_state_probabilistic_position(self):
         '''
         This function calculates a state of each intersection.
         The state representation is probabilistic position and described in the report.
@@ -90,10 +147,23 @@ class SumoEnv:
                     state[int(ilane * lane_len + ipos)] += 1. - (pos - ipos)
                     state[int(ilane * lane_len + ipos + 1)] += pos - ipos
 
-                # Adding phase as one hot vector to state.
-                num_of_phases = self.road_structure[intersection]['num_of_phases']
-                state[num_of_lanes * lane_len: num_of_lanes * lane_len + num_of_phases] = \
-                    np.eye(num_of_phases)[traci.trafficlight.getPhase(intersection)]
+            # Adding phase as one hot vector to state.
+            state[num_of_lanes * lane_len: num_of_lanes * lane_len + num_of_phases] = \
+                np.eye(num_of_phases)[traci.trafficlight.getPhase(intersection)]
+
+            # Visialize the state:
+            #if intersection == 'gneJ00':
+            if False:
+                state_pic = state[0: -4].reshape([num_of_lanes, -1])
+                sb.heatmap(state_pic, center=0)
+                plt.ion()
+                plt.show()
+                plt.pause(0.001)
+                name = 'state_pictures\\pic' \
+                       + str(datetime.now()).replace(':', '_').replace('-', '_').replace('.', '_').replace(' ', '_')\
+                       + '.PNG'
+                plt.savefig(name)
+                plt.clf()
 
             env_state[intersection] = state
         return env_state
@@ -123,7 +193,7 @@ class SumoEnv:
             traci.simulationStep()
 
         # Get the new_state of all intersections.
-        new_state = self.get_state_probabilistic_position()
+        new_state = self.get_state()
 
         reward, _ = self.calc_reward()
 
@@ -160,7 +230,7 @@ class SumoEnv:
                 wt += traci.lane.getWaitingTime(lane_id)
 
             relative_reward = - (wt - self.wt_last) * 50 #scale factor
-            absolute_reward = - wt * 0.004 #scale factor
+            absolute_reward = - wt * 0.0004 #scale factor
 
             self.wt_last = wt
 
@@ -170,7 +240,7 @@ class SumoEnv:
         return absolute_reward_dict, relative_reward_dict
 
     def parse_env(self):
-        traci.start(self.sumoCmd, label=self.label, )
+        traci.start(self.sumoCmd, label='AI-project', )
 
         junctions = list(traci.trafficlight.getIDList())
         for junc in junctions:
@@ -233,15 +303,11 @@ class SumoEnv:
     def reset(self, heatup=50):
         self.wt_last = 0.
         self.ncars = 0
-        traci.start(self.sumoCmd, label=self.label, )
-        try:
-            traci.trafficlight.setProgram('gneJ00', '0')
-        except:
-            print("No program set.")
+        traci.start(self.sumoCmd, label='AI-project', )
 
         for _ in range(heatup):
             traci.simulationStep()
-        return self.get_state_probabilistic_position()
+        return self.get_state()
 
     def close(self):
         traci.close()
