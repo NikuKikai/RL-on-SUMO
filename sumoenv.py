@@ -16,7 +16,9 @@ class SumoEnv:
         self.max_steps = args.sim_max_steps
         self.path_to_sim_file = path_to_sim_file
 
+        # reward and state types
         self.state_type = args.state_type
+        self.reward_type = args.reward_type
 
         # How much simulation steps perfromed in current episode.
         self.steps_done = 0
@@ -73,6 +75,18 @@ class SumoEnv:
         else:
             raise NotImplementedError
 
+    def _get_state_density_and_speed(self):
+        '''
+        This function calculates a state of each intersection.
+        The state representation is lane occupancy.
+        https://sumo.dlr.de/pydoc/traci._lane.html#LaneDomain-getLastStepOccupancy
+        and a avg lane speed.
+        TODO: consider using https://sumo.dlr.de/pydoc/traci._lane.html#LaneDomain-getLastStepMeanSpeed
+        :return: A dictionary: {'intersection_name1': state,
+                                'intersection_name2': state,...}
+        '''
+        raise NotImplementedError
+
     def _get_state_density(self):
         '''
         This function calculates a state of each intersection.
@@ -104,6 +118,10 @@ class SumoEnv:
 
     def _get_state_probabilistic_position(self):
         '''
+        TODO: consider using https://sumo.dlr.de/pydoc/traci._vehicle.html#VehicleDomain-getLanePosition instead
+        TODO: The position of the vehicle along the lane
+        TODO: (the distance from the front bumper to the start of the lane in [m]); error value: -2^30.
+
         This function calculates a state of each intersection.
         The state representation is probabilistic position and described in the report.
         :return: A dictionary: {'intersection_name1': state,
@@ -195,7 +213,7 @@ class SumoEnv:
         # Get the new_state of all intersections.
         new_state = self.get_state()
 
-        reward, _ = self.calc_reward()
+        reward = self.calc_reward()
 
         if self.steps_done >= self.max_steps:
             done = True
@@ -205,39 +223,115 @@ class SumoEnv:
 
     def calc_reward(self):
         '''
-        The waiting time of a vehicle is defined as the time (in seconds) spent with a
-        speed below 0.1m/s since the last time it was faster than 0.1m/s.
-        (basically, the waiting time of a vehicle is reset to 0 every time it moves).
-        A vehicle that is stopping intentionally with a <stop> does not accumulate waiting time. (c) Traci documentation.
+        This function calculates the reward of the action.
+        The reward type is defined in the rl_args file.
+        '''
+        if self.reward_type == 'wt_sum_absolute':
+            return self._calc_reward_wt_sum_absolute()
+        elif self.reward_type == 'wt_sum_relative':
+            return self._calc_reward_wt_sum_relative()
+        elif self.reward_type == 'wt_max':
+            return self._calc_reward_wt_max()
+        elif self.reward_type == 'accumulated_wt_max':
+            return self._calc_reward_accumulated_wt_max()
+        elif self.reward_type == 'wt_squares_sum':
+            return self._calc_reward_wt_squares_sum()
+        else:
+            print("No reward type defined!!!")
+            raise NotImplementedError
 
-        https://sumo.dlr.de/pydoc/traci._vehicle.html#VehicleDomain-getWaitingTime
-
-        This function calculates reward. We can use rewards of two types:
-        1) Absolute waiting time - just a sum of wait times at current time point.
-        2) Relative wait time - An increase or decrease of wait time relatively to previous state.
-        Both work well. Absolute reward is more stable and informative. See details in report.
+    def _calc_reward_wt_sum_absolute(self):
+        '''
+        This function calculates reward. Absolute waiting time - just a sum of wait times at current time point.
         :return: absolute_reward_dict - a dictionary:  {'intersection_name1': absolute_reward,
                                                         'intersection_name2': absolute_reward,...},
-                 relative_reward_dict - a dictionary:  {'intersection_name1': relative_reward,
-                                                        'intersection_name2': relative_reward,...},
         '''
         absolute_reward_dict = {}
+        for intersection in self.road_structure:
+            wt = 0
+            for lane_id, _ in self.road_structure[intersection]['lanes']:
+                wt += traci.lane.getWaitingTime(lane_id)
+            absolute_reward = - wt * 0.0004  # scale factor
+            self.wt_last = wt
+            absolute_reward_dict[intersection] = absolute_reward
+        return absolute_reward_dict
+
+
+    def _calc_reward_wt_sum_relative(self):
+        '''
+        This function calculates reward. Relative wait time - An increase or decrease of wait
+        time relatively to previous state.
+        :return: relative_reward_dict - a dictionary:  {'intersection_name1': relative_reward,
+                                                        'intersection_name2': relative_reward,...},
+        '''
         relative_reward_dict = {}
         for intersection in self.road_structure:
             wt = 0
-
             for lane_id, _ in self.road_structure[intersection]['lanes']:
                 wt += traci.lane.getWaitingTime(lane_id)
-
-            relative_reward = - (wt - self.wt_last) * 50 #scale factor
-            absolute_reward = - wt * 0.0004 #scale factor
-
+            relative_reward = - (wt - self.wt_last) * 50  # scale factor
             self.wt_last = wt
-
-            absolute_reward_dict[intersection] = absolute_reward
             relative_reward_dict[intersection] = relative_reward
+        return relative_reward_dict
 
-        return absolute_reward_dict, relative_reward_dict
+    def _calc_reward_accumulated_wt_max(self):
+        '''
+        This function calculates reward. The maximum accumulated waiting time across all vehicles for each intersection.
+        https://sumo.dlr.de/pydoc/traci._vehicle.html#VehicleDomain-getAccumulatedWaitingTime
+        The problem with this reward, that in real world system, we can't gather this kind of data.
+        :return: relative_reward_dict - a dictionary:  {'intersection_name1': wt_max_reward,
+                                                        'intersection_name2': wt_max_reward,...},
+        '''
+        wt_max_reward_dict = {}
+        for intersection in self.road_structure:
+            max_wt = 0
+            for lane_id, _ in self.road_structure[intersection]['lanes']:
+                car_ids = traci.lane.getLastStepVehicleIDs(lane_id)
+                for car_id in car_ids:
+                    curr_wt = traci.vehicle.getAccumulatedWaitingTime(car_id)
+                    if max_wt < curr_wt:
+                        max_wt = curr_wt
+            wt_max_reward = - max_wt
+            wt_max_reward_dict[intersection] = wt_max_reward
+        return wt_max_reward_dict
+
+    def _calc_reward_wt_max(self):
+        '''
+        This function calculates reward. The maximum waiting time across all vehicles for each intersection.
+        https://sumo.dlr.de/pydoc/traci._vehicle.html#VehicleDomain-getWaitingTime
+        :return: relative_reward_dict - a dictionary:  {'intersection_name1': wt_max_reward,
+                                                        'intersection_name2': wt_max_reward,...},
+        '''
+        wt_max_reward_dict = {}
+        for intersection in self.road_structure:
+            max_wt = 0
+            for lane_id, _ in self.road_structure[intersection]['lanes']:
+                car_ids = traci.lane.getLastStepVehicleIDs(lane_id)
+                for car_id in car_ids:
+                    curr_wt = traci.vehicle.getWaitingTime(car_id)
+                    if max_wt < curr_wt:
+                        max_wt = curr_wt
+            wt_max_reward = - max_wt
+            wt_max_reward_dict[intersection] = wt_max_reward
+        return wt_max_reward_dict
+
+    def _calc_reward_wt_squares_sum(self):
+        '''
+        This function calculates reward. Square sum of waiting times across all vehicles for each intersection.
+        https://sumo.dlr.de/pydoc/traci._vehicle.html#VehicleDomain-getWaitingTime
+        :return: relative_reward_dict - a dictionary:  {'intersection_name1': wt_max_reward,
+                                                        'intersection_name2': wt_max_reward,...},
+        '''
+        wt_reward_dict = {}
+        for intersection in self.road_structure:
+            wt = 0
+            for lane_id, _ in self.road_structure[intersection]['lanes']:
+                car_ids = traci.lane.getLastStepVehicleIDs(lane_id)
+                for car_id in car_ids:
+                    wt += traci.vehicle.getWaitingTime(car_id) ** 2
+            wt_reward = - wt
+            wt_reward_dict[intersection] = wt_reward
+        return wt_reward_dict
 
     def parse_env(self):
         traci.start(self.sumoCmd, label='AI-project', )
