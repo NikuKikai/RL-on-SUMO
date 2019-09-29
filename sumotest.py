@@ -1,5 +1,4 @@
 import numpy as np
-import agent as ag
 import sumoenv as se
 import matplotlib.pyplot as plt
 from rl_agents import Fixed_Q_Targets_Agent

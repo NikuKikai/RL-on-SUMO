@@ -13,10 +13,35 @@ import torchvision.transforms as T
 from replay_memory import Transition
 from replay_memory import ReplayMemory
 from datetime import datetime
+from random import randrange
+import utils
 
 
+class Random_Agent():
+    '''
+    This agent only takes a random phase.
+    '''
+    def __init__(self, n_actions=4):
+        self.n_actions = n_actions
 
+        # Performance buffers.
+        self.rewards_list = []
 
+    def select_action(self, state=None):
+        return randrange(self.n_actions)
+
+    def add_to_memory(self, state, action, next_state, reward):
+        # This method used only for saving the reward.
+        self.rewards_list.append(reward)
+
+    def dump_rewards(self):
+        '''
+        Save cumulative rewards to file
+        '''
+        # TODO: write smarter logging interface.
+        with open('random_agent_dump.txt', 'a') as file:
+            file.write(str(np.mean(np.array(self.rewards_list))) + '\n')
+        self.rewards_list = []
 
 class Cyclic_Agent():
     '''
@@ -185,6 +210,16 @@ class DQN_Agent(RL_Agent):
             param.grad.data.clamp_(-1, 1)
         self.optimizer.step()
 
+        # Saving a checkpoint is done in the following way :
+        # Should we consider adding another fields?
+        # define is_best variable to indicate weather the current agent is the best so far
+        # utils.save_checkpoint({'epoch': should this be saved? what is epoch?,
+        #                         'policy_net': self.policy_net.state_dict(),
+        #                         'optimizer' : self.optimizer,
+        #                         'train_loss': loss}
+        #                         is_best =is_best,
+        #                         checkpoint="weights_and_val")
+
 
 class Fixed_Q_Targets_Agent():
     '''
@@ -318,6 +353,18 @@ class Fixed_Q_Targets_Agent():
         # Update the target network, copying all weights and biases in DQN
         if self.steps_done % self.target_update == 0:
             self.target_net.load_state_dict(self.policy_net.state_dict())
+
+
+        # Saving a checkpoint is done in the following way :
+        # Should we consider adding another fields?
+        # define is_best variable to indicate weather the current agent is the best so far
+        # utils.save_checkpoint({'epoch': should this be saved? what is epoch?,
+        #                         'policy_net': self.policy_net.state_dict(),
+        #                         'target_net': self.target_net.state_dict(),
+        #                         'optimizer' : self.optimizer,
+        #                         'train_loss': loss}
+        #                         is_best =is_best,
+        #                         checkpoint="weights_and_val")
 
 
 class Double_DQN_Agent():
