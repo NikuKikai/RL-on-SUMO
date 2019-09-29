@@ -38,10 +38,10 @@ class fixed_q_targets_israel_double_args():
     # Exploration / Exploitation params.
     eps_start = 0.99
     eps_end = 0.05
-    eps_decay = 1000  # exploration decay rate. bigger is slower. Don't set it above 10000 - it too slow.
+    eps_decay = 100  # exploration decay rate. bigger is slower. Don't set it above 10000 - it too slow.
 
     # RL params
-    episodes = 50 # 100 should be enough
+    episodes = 100 # 100 should be enough
     target_update = 50 # target net updated each k steps
     discount = 0.999 # dsicount of future reward.
 
@@ -56,7 +56,8 @@ class fixed_q_targets_israel_double_args():
     sim_heatup = 50 # simulation run this amount of steps after reset.
     sim_max_steps = 3000 # simulation ends after this amount of steps.
     sim_steps = 10 # simulation steps performed between two actions.
-    state_type = 'density'
+    state_type = 'density' # or 'position'
+    reward_type = 'wt_squares_sum' # 'wt_sum_absolute', 'wt_sum_relative', 'wt_max', 'accumulated_wt_max', 'wt_squares_sum'
 
     # Logging params
     output_file_name = 'fixed_q_targets_israel_double_output.txt'
