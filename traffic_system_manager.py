@@ -75,6 +75,7 @@ class TrafficSystemManager:
                 plt.title('Cumulative rewards')
                 plt.plot(range(len(cumul_rewards)), cumul_rewards, label=key)
 
+            plt.tight_layout()
             plt.legend()
             plt.draw()
             plt.pause(0.001)
