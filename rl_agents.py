@@ -317,7 +317,6 @@ class Fixed_Q_Targets_Agent():
 
         # Update the target network, copying all weights and biases in DQN
         if self.steps_done % self.target_update == 0:
-            print('================ Target updated ===============')
             self.target_net.load_state_dict(self.policy_net.state_dict())
 
 
