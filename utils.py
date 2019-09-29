@@ -1,7 +1,7 @@
 import os
 import shutil
 import torch
-
+import datetime
 
 def save_checkpoint(state, is_best,  checkpoint):
     """Saves model and training parameters at checkpoint + 'last.pth.tar'. If is_best==True, also saves
@@ -11,7 +11,10 @@ def save_checkpoint(state, is_best,  checkpoint):
         is_best: (bool) True if it is the best model seen till now
         checkpoint: (string) folder where parameters are to be saved
     """
-    filepath = os.path.join(checkpoint, 'last.pth.tar')
+    now = datetime.datetime.now()
+    now.strftime("%Y%m%d-%H:%M:%S")
+    extension = '{}.pth.tar'.format(now)
+    filepath = os.path.join(checkpoint, extension)
     if not os.path.exists(checkpoint):
         print("Checkpoint Directory does not exist! Making directory {}".format(checkpoint))
         os.mkdir(checkpoint)
