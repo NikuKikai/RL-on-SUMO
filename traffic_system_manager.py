@@ -3,20 +3,23 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 class TrafficSystemManager:
-    def __init__(self, road_structure, rl_args, verbose=True):
+    def __init__(self, dim_dict, rl_args, verbose=True):
         self.agents_dict = {}
-        self.cumulative_rewards_dict = {}
-        self.rewards_dict = {}
-        for intersection_name in road_structure:
-            num_of_actions = road_structure[intersection_name]['num_of_phases']
-            input_state_size = road_structure[intersection_name]['num_of_lanes'] * \
-                               road_structure[intersection_name]['lane_len'] + \
-                               num_of_actions
 
+        # Metrics logging:
+        self.avg_rewards_dict = {} # Average reward per episode
+        self.rewards_dict = {} # Rewards of an episode
+        self.cumulative_rewards_dict = {} # Cumulative rewards of entire experiment
+
+        for intersection_name in dim_dict:
+            input_state_size, num_of_actions = dim_dict[intersection_name]
             # TODO: enable other agents too..
             self.agents_dict[intersection_name] = Fixed_Q_Targets_Agent(input_state_size, num_of_actions, rl_args, device='cuda')
-            self.cumulative_rewards_dict[intersection_name] = []
+
+            # Initialize all loggers.
+            self.avg_rewards_dict[intersection_name] = []
             self.rewards_dict[intersection_name] = []
+            self.cumulative_rewards_dict[intersection_name] = [0]
 
         if verbose:
             print('========== Traffic System Manager initialized with the following agents:')
@@ -44,19 +47,39 @@ class TrafficSystemManager:
             self.agents_dict[agent_name].add_to_memory(state, action, next_state, reward)
 
             self.rewards_dict[agent_name].append(reward)
+            last_cumulative_reward = self.cumulative_rewards_dict[agent_name][-1]
+            self.cumulative_rewards_dict[agent_name].append(last_cumulative_reward + reward)
 
     def teach_agents(self):
         for agent_name in self.agents_dict:
             self.agents_dict[agent_name].optimize_model()
 
-    def plot_learn_curve(self):
+    def dump_learn_curve(self, plot=False):
+        '''
+        This method saves the average reward of the performed steps up to this point.
+        Then it empties the rewards buffer. This method should be called at the end of each episode.
+        '''
         for key in self.rewards_dict:
-            self.cumulative_rewards_dict[key].append(np.mean(self.rewards_dict[key]))
+            self.avg_rewards_dict[key].append(np.mean(self.rewards_dict[key]))
             self.rewards_dict[key] = []
 
-        for key in self.cumulative_rewards_dict:
-            cumm_rewards = self.cumulative_rewards_dict[key]
-            plt.plot(range(len(cumm_rewards)), cumm_rewards, label=key)
-        plt.draw()
-        plt.pause(0.001)
-        plt.clf()
+        if plot:
+            for key in self.avg_rewards_dict:
+                avg_rewards = self.avg_rewards_dict[key]
+                plt.subplot(2,1,1)
+                plt.title('Average Reward / Episode')
+                plt.plot(range(len(avg_rewards)), avg_rewards, label=key)
+            for key in self.cumulative_rewards_dict:
+                cumul_rewards = self.cumulative_rewards_dict[key]
+                plt.subplot(2, 1, 2)
+                plt.title('Cumulative rewards')
+                plt.plot(range(len(cumul_rewards)), cumul_rewards, label=key)
+
+            plt.legend()
+            plt.draw()
+            plt.pause(0.001)
+            plt.savefig('result.PNG')
+            plt.clf()
+
+    def get_learn_curve(self):
+        return self.avg_rewards_dict
