@@ -2,12 +2,11 @@ import os
 import sys
 import traci
 import numpy as np
+import random
 from math import ceil
 import seaborn as sb
 import matplotlib.pyplot as plt
 from datetime import datetime
-from rl_args import fixed_q_targets_args
-
 
 class SumoEnv:
     def __init__(self, args, path_to_sim_file='simulations\\intersection.sumocfg', gui=False):
@@ -62,6 +61,8 @@ class SumoEnv:
                 dim_dict[intersection] = (lane_len * num_of_lanes + num_of_actions, num_of_actions)
             elif self.state_type == 'density':
                 dim_dict[intersection] = (num_of_lanes + num_of_actions, num_of_actions)
+            elif self.state_type == 'density_and_speed':
+                dim_dict[intersection] = (2 * num_of_lanes + num_of_actions, num_of_actions)
             else:
                 raise NotImplementedError
 
@@ -72,6 +73,8 @@ class SumoEnv:
             return self._get_state_density()
         elif self.state_type == 'position':
             return self._get_state_probabilistic_position()
+        elif self.state_type == 'density_and_speed':
+            return self._get_state_density_and_speed()
         else:
             raise NotImplementedError
 
@@ -81,11 +84,30 @@ class SumoEnv:
         The state representation is lane occupancy.
         https://sumo.dlr.de/pydoc/traci._lane.html#LaneDomain-getLastStepOccupancy
         and a avg lane speed.
-        TODO: consider using https://sumo.dlr.de/pydoc/traci._lane.html#LaneDomain-getLastStepMeanSpeed
+        https://sumo.dlr.de/pydoc/traci._lane.html#LaneDomain-getLastStepMeanSpeed
         :return: A dictionary: {'intersection_name1': state,
                                 'intersection_name2': state,...}
         '''
-        raise NotImplementedError
+        env_state = {}
+
+        for intersection in self.road_structure:
+            num_of_phases = self.road_structure[intersection]['num_of_phases']
+            num_of_lanes = self.road_structure[intersection]['num_of_lanes']
+
+            # Prepare empty state of fixed size.
+            # TODO: consider moving this to parsing part. The empty state is same during all time...
+            state = np.zeros(2 * num_of_lanes + num_of_phases, dtype=np.float32)
+
+            for ilane, (lane_id, _) in enumerate(self.road_structure[intersection]['lanes']):
+                state[2 * ilane] = traci.lane.getLastStepOccupancy(lane_id) # add density
+                state[2 * ilane + 1] = traci.lane.getLastStepMeanSpeed(lane_id) # add mean speed
+
+            # Adding phase as one hot vector to state.
+            state[2 * num_of_lanes: 2 * num_of_lanes + num_of_phases] = \
+                    np.eye(num_of_phases)[traci.trafficlight.getPhase(intersection)]
+
+            env_state[intersection] = state
+        return env_state
 
     def _get_state_density(self):
         '''
@@ -228,6 +250,8 @@ class SumoEnv:
         '''
         if self.reward_type == 'wt_sum_absolute':
             return self._calc_reward_wt_sum_absolute()
+        elif self.reward_type == 'wt_avg_absolute':
+            return self._calc_reward_wt_avg_absolute()
         elif self.reward_type == 'wt_sum_relative':
             return self._calc_reward_wt_sum_relative()
         elif self.reward_type == 'wt_max':
@@ -242,7 +266,8 @@ class SumoEnv:
 
     def _calc_reward_wt_sum_absolute(self):
         '''
-        This function calculates reward. Absolute waiting time - just a sum of wait times at current time point.
+        This function calculates reward.
+        Absolute sum of waiting times.
         :return: absolute_reward_dict - a dictionary:  {'intersection_name1': absolute_reward,
                                                         'intersection_name2': absolute_reward,...},
         '''
@@ -251,8 +276,27 @@ class SumoEnv:
             wt = 0
             for lane_id, _ in self.road_structure[intersection]['lanes']:
                 wt += traci.lane.getWaitingTime(lane_id)
-            absolute_reward = - wt * 0.0004  # scale factor
-            self.wt_last = wt
+
+            absolute_reward = - wt #/ 10e3  # scale factor
+            absolute_reward_dict[intersection] = absolute_reward
+        return absolute_reward_dict
+
+    def _calc_reward_wt_avg_absolute(self):
+        '''
+        This function calculates reward.
+        Absolute average waiting time per car.
+        :return: absolute_reward_dict - a dictionary:  {'intersection_name1': absolute_reward,
+                                                        'intersection_name2': absolute_reward,...},
+        '''
+        absolute_reward_dict = {}
+        for intersection in self.road_structure:
+            wt = 0
+            for lane_id, _ in self.road_structure[intersection]['lanes']:
+                cars_num = traci.lane.getLastStepVehicleNumber(lane_id)
+                if cars_num != 0:
+                    wt += traci.lane.getWaitingTime(lane_id)/cars_num
+
+            absolute_reward = - wt #/ 10e3  # scale factor
             absolute_reward_dict[intersection] = absolute_reward
         return absolute_reward_dict
 
@@ -329,7 +373,7 @@ class SumoEnv:
                 car_ids = traci.lane.getLastStepVehicleIDs(lane_id)
                 for car_id in car_ids:
                     wt += traci.vehicle.getWaitingTime(car_id) ** 2
-            wt_reward = - wt
+            wt_reward = - wt/10e8
             wt_reward_dict[intersection] = wt_reward
         return wt_reward_dict
 
@@ -399,7 +443,8 @@ class SumoEnv:
         self.ncars = 0
         traci.start(self.sumoCmd, label='AI-project', )
 
-        for _ in range(heatup):
+        steps = random.randint(5, heatup)
+        for _ in range(steps):
             traci.simulationStep()
         return self.get_state()
 
