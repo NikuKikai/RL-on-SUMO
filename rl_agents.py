@@ -15,7 +15,7 @@ from replay_memory import ReplayMemory
 from datetime import datetime
 from random import randrange
 import utils
-
+import os
 
 class Random_Agent():
     '''
@@ -84,14 +84,18 @@ class Cyclic_Agent():
             file.write(str(np.mean(np.array(self.rewards_list))) + '\n')
         self.rewards_list = []
 
-class RL_Agent():
+class DQN_Agent():
+    '''
+    Regular Q-Learning Agent
+    One deep network.
+    DQN - to predict Q of a given action, value a state. i.e. Q(s,a) and Q(s', a') for loss calculation.
+    '''
     def __init__(self, state_size, n_actions, args, device='cpu'):
-        # Get number of actions from gym action space
         self.device = device
 
         # Exploration / Exploitation params.
         self.steps_done = 0
-        self.eps = 1
+        self.eps_threshold = 1
         self.eps_start = args.eps_start
         self.eps_end = args.eps_end
         self.eps_decay = args.eps_decay
@@ -107,6 +111,7 @@ class RL_Agent():
         # Deep q networks params
         self.batch_size = args.batch_size
         self.policy_net = DQN(state_size, n_actions).to(self.device)
+        self.target_net = None
         self.grad_clip = args.grad_clip
 
         if str(args.optimizer).lower() == 'adam':
@@ -131,10 +136,10 @@ class RL_Agent():
 
     def select_action(self, state):
         sample = random.random()
-        eps_threshold = self.eps_end + (self.eps_start - self.eps_end) * \
+        self.eps_threshold = self.eps_end + (self.eps_start - self.eps_end) * \
                         math.exp(-1. * self.steps_done / self.eps_decay)
         self.steps_done += 1
-        if sample > eps_threshold:
+        if sample > self.eps_threshold:
             with torch.no_grad():
                 # t.max(1) will return largest column value of each row.
                 # second column on max result is index of where max element was
@@ -145,12 +150,6 @@ class RL_Agent():
         else:
             return torch.tensor([[random.randrange(self.n_actions)]], device=self.device, dtype=torch.long).item()
 
-    def compute_loss(self, state_batch, action_batch, next_states_batch, reward_batch):
-        raise NotImplementedError
-
-    def update_target(self):
-        return
-
     def optimize_model(self):
         if len(self.memory) < self.batch_size:
             return
@@ -159,46 +158,30 @@ class RL_Agent():
         # to Transition of batch-arrays.
         batch = Transition(*zip(*transitions))
 
-        # Compute a mask of non-final states and concatenate the batch elements
-        # (a final state would've been the one after which simulation ended)
-        # non_final_mask = torch.tensor(tuple(map(lambda s: s is not None,
-        #                               batch.next_state)), device=self.device,
-        #                               dtype=torch.bool)
-        # non_final_next_states = torch.cat([s for s in batch.next_state
-        #                                   if s is not None]).view(self.batch_size,-1).to(self.device)
         next_states_batch = torch.cat(batch.next_state).view(self.batch_size, -1).to(self.device)
         state_batch = torch.cat(batch.state).view(self.batch_size, -1).to(self.device)
         action_batch = torch.cat(batch.action).view(self.batch_size, -1).to(self.device)
         reward_batch = torch.cat(batch.reward).view(self.batch_size, -1).to(self.device)
 
         # Compute loss
-        loss = self.compute_loss(state_batch, action_batch, next_states_batch, reward_batch)
+        loss = self._compute_loss(state_batch, action_batch, next_states_batch, reward_batch)
 
         # Optimize the model
         self.optimizer.zero_grad()
         loss.backward()
 
         # clip grad
-        if self.grad_clip:
+        if self.grad_clip is not None:
             for param in self.policy_net.parameters():
-                param.grad.data.clamp_(-1, 1)
+                param.grad.data.clamp_(-self.grad_clip, self.grad_clip)
 
         # update Policy net weights
         self.optimizer.step()
 
-        self.update_target()
+        # update Target net weights
+        self._update_target()
 
-
-class DQN_Agent(RL_Agent):
-    '''
-    Regular Q-Learning Agent
-    One deep network.
-    DQN - to predict Q of a given action, value a state. i.e. Q(s,a) and Q(s', a') for loss calculation.
-    '''
-    def __init__(self, state_size, n_actions, args, device):
-        super().__init__(state_size, n_actions, args, device=device)
-
-    def compute_loss(self, state_batch, action_batch, next_states_batch, reward_batch):
+    def _compute_loss(self, state_batch, action_batch, next_states_batch, reward_batch):
         # Compute Q(s_t, a) - the model computes Q(s_t), then we select the
         # columns of actions taken. These are the actions which would've been taken
         # for each batch state according to policy_net
@@ -214,8 +197,36 @@ class DQN_Agent(RL_Agent):
         loss = F.smooth_l1_loss(state_action_values, expected_state_action_values)
         return loss
 
+    def _update_target(self):
+        if self.target_net is None:
+            # There is nothing to update.
+            return
 
-class Fixed_Q_Targets_Agent(RL_Agent):
+        # Update the target network, copying all weights and biases in DQN
+        if self.target_update > 1:
+            # Hard copy of weights.
+            if self.steps_done % self.target_update == 0:
+                self.target_net.load_state_dict(self.policy_net.state_dict())
+            return
+        elif self.target_update < 1 and self.target_update > 0:
+            # polyak averaging:
+            tau = self.target_update
+            for target_param, param in zip(self.target_net.parameters(), self.policy_net.parameters()):
+                target_param.data.copy_(tau * param + (1 - tau) * target_param)
+            return
+        else:
+            raise NotImplementedError
+
+    def save_ckpt(self, ckpt_folder):
+        '''
+        saves checkpoint of policy net in ckpt_folder
+        :param ckpt_folder: path to a folder.
+        '''
+        ckpt_path = os.path.join(ckpt_folder, 'policy_net_state_dict.pth')
+        torch.save(self.policy_net.state_dict(), ckpt_path)
+
+
+class Fixed_Q_Targets_Agent(DQN_Agent):
     '''
     This agent implements Fixed Q-Targets algorithm. There are two deep networks.
     Policy network - to predict Q of a given action, value a state. i.e. Q(s,a)
@@ -227,25 +238,7 @@ class Fixed_Q_Targets_Agent(RL_Agent):
         self.target_net.load_state_dict(self.policy_net.state_dict())
         self.target_net.eval()
 
-    def optimize_model(self):
-        if len(self.memory) < self.batch_size:
-            return
-        transitions = self.memory.sample(self.batch_size)
-        # This converts batch-array of Transitions
-        # to Transition of batch-arrays.
-        batch = Transition(*zip(*transitions))
-
-        # Compute a mask of non-final states and concatenate the batch elements
-        # (a final state would've been the one after which simulation ended)
-        non_final_mask = torch.tensor(tuple(map(lambda s: s is not None,
-                                      batch.next_state)), device=self.device,
-                                      dtype=torch.bool)
-        non_final_next_states = torch.cat([s for s in batch.next_state
-                                           if s is not None]).view(self.batch_size,-1).to(self.device)
-        state_batch = torch.cat(batch.state).view(self.batch_size,-1).to(self.device)
-        action_batch = torch.cat(batch.action).view(self.batch_size,-1).to(self.device)
-        reward_batch = torch.cat(batch.reward).view(self.batch_size,-1).to(self.device)
-
+    def _compute_loss(self, state_batch, action_batch, next_states_batch, reward_batch):
         # Compute Q(s_t, a) - the model computes Q(s_t), then we select the
         # columns of actions taken. These are the actions which would've been taken
         # for each batch state according to policy_net
@@ -257,29 +250,16 @@ class Fixed_Q_Targets_Agent(RL_Agent):
         # This is merged based on the mask, such that we'll have either the expected
         # state value or 0 in case the state was final.
         next_state_values = torch.zeros(self.batch_size, device=self.device)
-        next_state_values[non_final_mask] = self.target_net(non_final_next_states).max(1)[0].detach()
+        next_state_values = self.target_net(next_states_batch).max(1)[0].detach()
         # Compute the expected Q values
         expected_state_action_values = (next_state_values.unsqueeze(1) * self.discount) + reward_batch
 
         # Compute Huber loss
         loss = F.smooth_l1_loss(state_action_values, expected_state_action_values)
-
-        # Optimize the model
-        self.optimizer.zero_grad()
-        loss.backward()
-        # clip gradients.
-        # TODO: explain why
-        if self.grad_clip:
-            for param in self.policy_net.parameters():
-                param.grad.data.clamp_(-1, 1)
-        self.optimizer.step()
-
-        # Update the target network, copying all weights and biases in DQN
-        if self.steps_done % self.target_update == 0:
-            self.target_net.load_state_dict(self.policy_net.state_dict())
+        return loss
 
 
-class Double_DQN_Agent(RL_Agent):
+class Double_DQN_Agent(DQN_Agent):
     '''
     Double DQN Agent. Sourses:
     https://towardsdatascience.com/double-deep-q-networks-905dd8325412
@@ -299,28 +279,8 @@ class Double_DQN_Agent(RL_Agent):
         self.target_net = DQN(state_size, n_actions).to(self.device)
         self.target_net.load_state_dict(self.policy_net.state_dict())
         self.target_net.eval()
-        self.tau = args.polyak_averaging_tau
 
-    def optimize_model(self):
-        if len(self.memory) < self.batch_size:
-            return
-        transitions = self.memory.sample(self.batch_size)
-        # This converts batch-array of Transitions
-        # to Transition of batch-arrays.
-        batch = Transition(*zip(*transitions))
-
-        # Compute a mask of non-final states and concatenate the batch elements
-        # (a final state would've been the one after which simulation ended)
-        non_final_mask = torch.tensor(tuple(map(lambda s: s is not None,
-                                      batch.next_state)), device=self.device,
-                                      dtype=torch.bool)
-        #non_final_next_states = torch.cat([s for s in batch.next_state
-        #                                   if s is not None]).view(self.batch_size,-1).to(self.device)
-        next_states_batch = torch.cat(batch.next_state).view(self.batch_size, -1).to(self.device)
-        state_batch = torch.cat(batch.state).view(self.batch_size,-1).to(self.device)
-        action_batch = torch.cat(batch.action).view(self.batch_size,-1).to(self.device)
-        reward_batch = torch.cat(batch.reward).view(self.batch_size,-1).to(self.device)
-
+    def _compute_loss(self, state_batch, action_batch, next_states_batch, reward_batch):
         # Q{policy net}(s, a)
         state_action_q_values = self.policy_net(state_batch).gather(1, action_batch)
 
@@ -335,21 +295,11 @@ class Double_DQN_Agent(RL_Agent):
 
         # Compute Huber loss
         loss = F.smooth_l1_loss(state_action_q_values, expected_state_action_values)
-
-        # Optimize the model
-        self.optimizer.zero_grad()
-        loss.backward()
-        # clip gradients.
-        if self.grad_clip:
-            for param in self.policy_net.parameters():
-                param.grad.data.clamp_(-1, 1)
-        self.optimizer.step()
-
-        # target network update
-        for target_param, param in zip(self.target_net.parameters(), self.policy_net.parameters()):
-            target_param.data.copy_(self.tau * param + (1 - self.tau) * target_param)
+        return loss
 
 
+
+# TODO: the following code should be deleted.
 class Old_Double_DQN_Agent():
     '''
     Double DQN Agents
