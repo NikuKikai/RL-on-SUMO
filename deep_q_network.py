@@ -5,8 +5,11 @@ class DQN(nn.Module):
     '''
     This class implements deep q network with pytorch
     '''
-    def __init__(self, inputs, outputs):
+    def __init__(self, inputs, outputs, layers=[128, 64, 16]):
         super(DQN, self).__init__()
+        # TODO: layers will be a list [A, B, C] on layer sizes.
+        # TODO: implement the initialization of the deep net so it will
+        # TODO: be in such shape: [inputs, A, B, C, outputs].
         self.fc1 = nn.Linear(inputs, 128)
         self.relu1 = nn.ReLU()
         self.fc2 = nn.Linear(128, 64)
