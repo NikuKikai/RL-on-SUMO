@@ -109,8 +109,9 @@ class DQN_Agent():
         self.state_size = state_size
 
         # Deep q networks params
+        self.layers = args.layers
         self.batch_size = args.batch_size
-        self.policy_net = DQN(state_size, n_actions).to(self.device)
+        self.policy_net = DQN(state_size, n_actions, layers=self.layers).to(self.device)
         self.target_net = None
         self.grad_clip = args.grad_clip
 
@@ -234,7 +235,7 @@ class Fixed_Q_Targets_Agent(DQN_Agent):
     '''
     def __init__(self, state_size, n_actions, args, device):
         super().__init__(state_size, n_actions, args, device=device)
-        self.target_net = DQN(state_size, n_actions).to(self.device)
+        self.target_net = DQN(state_size, n_actions, layers=self.layers).to(self.device)
         self.target_net.load_state_dict(self.policy_net.state_dict())
         self.target_net.eval()
 
@@ -276,7 +277,7 @@ class Double_DQN_Agent(DQN_Agent):
     '''
     def __init__(self, state_size, n_actions, args, device):
         super().__init__(state_size, n_actions, args, device=device)
-        self.target_net = DQN(state_size, n_actions).to(self.device)
+        self.target_net = DQN(state_size, n_actions, layers=self.layers).to(self.device)
         self.target_net.load_state_dict(self.policy_net.state_dict())
         self.target_net.eval()
 
