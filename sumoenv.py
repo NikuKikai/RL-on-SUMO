@@ -9,11 +9,12 @@ import matplotlib.pyplot as plt
 from datetime import datetime
 
 class SumoEnv:
-    def __init__(self, args, path_to_sim_file='simulations\\intersection.sumocfg', gui=False):
+    def __init__(self, args, path_to_sim_file='simulations\\intersection.sumocfg', always_gui=False, capture_each=-1, capture_path=None):
         self.wt_last = 0.
         self.ncars = 0
         self.max_steps = args.sim_max_steps
         self.path_to_sim_file = path_to_sim_file
+        self.curr_episode = -1
 
         # reward and state types
         self.state_type = args.state_type
@@ -22,8 +23,7 @@ class SumoEnv:
         # How much simulation steps perfromed in current episode.
         self.steps_done = 0
         # How much simulation steps perfromed each step_d call.
-        self.sim_steps = args.sim_steps
-
+        self.sim_steps = args.sim_steps_per_do_step
 
         if 'SUMO_HOME' in os.environ:
             tools = os.path.join(os.environ['SUMO_HOME'], 'tools')
@@ -31,9 +31,17 @@ class SumoEnv:
         else:
             sys.exit("please declare environment variable 'SUMO_HOME'")
 
-        exe = 'sumo-gui.exe' if gui else 'sumo.exe'
-        sumoBinary = os.path.join(os.environ['SUMO_HOME'], 'bin', exe)
+        self.capture_each = capture_each # take screenshots of entire episode each 'capture' episode.
+        self.always_gui = always_gui
+        self.gui_active = False
+        sumoBinary = os.path.join(os.environ['SUMO_HOME'], 'bin', 'sumo.exe')
+        sumoBinary_gui = os.path.join(os.environ['SUMO_HOME'], 'bin', 'sumo-gui.exe')
         self.sumoCmd = [sumoBinary, '-c', self.path_to_sim_file, '--no-warnings'] #,'--no-step-log',
+        self.sumoCmd_gui = [sumoBinary_gui, '-c', self.path_to_sim_file, '--start', '--quit-on-end']
+
+        # Path for saving screenshots
+        self.capture_path = os.path.join(capture_path, 'capture')
+        os.makedirs(self.capture_path)
 
         # A data structure which represents the roads conncetions
         self.road_structure = {}
@@ -220,6 +228,7 @@ class SumoEnv:
                                         'intersection_name2': reward,...},
                 done - either the simulation ended.
         '''
+
         self.steps_done += self.sim_steps
         done = False
 
@@ -230,7 +239,7 @@ class SumoEnv:
 
         # Perform multiple steps of simulation.
         for _ in range(self.sim_steps):
-            traci.simulationStep()
+            self.sim_step()
 
         # Get the new_state of all intersections.
         new_state = self.get_state()
@@ -242,6 +251,15 @@ class SumoEnv:
             self.steps_done = 0
 
         return new_state, reward, done
+
+    def sim_step(self):
+        traci.simulationStep()
+        if self.capture_each > 0 and self.gui_active:
+            name = 'episode_' + str(self.curr_episode) + '_step_' + str(self.steps_done) + '.PNG'
+            folder = os.path.join(self.capture_path, 'Episode_'+str(self.curr_episode))
+            if not os.path.exists(folder):
+                raise FileNotFoundError
+            traci.gui.screenshot("View #0", os.path.join(folder, name))
 
     def calc_reward(self):
         '''
@@ -378,6 +396,7 @@ class SumoEnv:
         return wt_reward_dict
 
     def parse_env(self):
+        # start simulation only for parsing. Without gui.
         traci.start(self.sumoCmd, label='AI-project', )
 
         junctions = list(traci.trafficlight.getIDList())
@@ -439,13 +458,32 @@ class SumoEnv:
                 print(self.road_structure[junc][key])
 
     def reset(self, heatup=50):
+        '''
+        Reset before new episode.
+        :param heatup: the simulation will run from 5 up to 'heatup' steps
+        without interaction with the agent.
+        :return:
+        '''
         self.wt_last = 0.
         self.ncars = 0
-        traci.start(self.sumoCmd, label='AI-project', )
+        self.curr_episode += 1
+
+        if self.capture_each > 0 and self.curr_episode % self.capture_each == 0:
+            # To perform capture we need to open SUMO-gui
+            self.gui_active = True
+            traci.start(self.sumoCmd_gui, label='AI-project')
+            # Create a folder for new episode
+            os.mkdir(os.path.join(self.capture_path, 'Episode_'+str(self.curr_episode)))
+        elif self.always_gui:
+            self.gui_active = True
+            traci.start(self.sumoCmd_gui, label='AI-project')
+        else:
+            self.gui_active = False
+            traci.start(self.sumoCmd, label='AI-project', )
 
         steps = random.randint(5, heatup)
         for _ in range(steps):
-            traci.simulationStep()
+            self.sim_step()
         return self.get_state()
 
     def close(self):
