@@ -290,7 +290,6 @@ class SumoEnv:
         for intersection in self.road_structure:
             wt = 0
             max_wt = 0
-            spacial_purpose_users_wt = 0
             for lane_id, _ in self.road_structure[intersection]['lanes']:
                 car_ids = traci.lane.getLastStepVehicleIDs(lane_id)
                 for car_id in car_ids:
