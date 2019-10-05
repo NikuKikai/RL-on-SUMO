@@ -1,6 +1,29 @@
 import torch
 from torch import nn
 
+# WORK IN PROCESS
+class DQN_GENERAL(nn.Module):
+    def __init__(self, inputs, outputs, layers=[128, 64, 16]):
+        super(DQN_GENERAL, self).__init__()
+        h_sizes = [inputs] + layers
+        out_size = outputs
+        # Hidden layers
+        self.hidden = []
+        for k in range(len(h_sizes)-1):
+            self.hidden.append(nn.Linear(h_sizes[k], h_sizes[k + 1]))
+            self.add_module("hidden_layer" + str(k), self.hidden[-1])
+
+        # Output layer
+        self.out = nn.Linear(h_sizes[-1], out_size)
+
+    def forward(self, x):
+        # Feedforward
+        for layer in self.hidden:
+            x = nn.ReLU(layer(x))
+        output= self.out(x.view(x.size(0), -1))
+        return output
+
+
 class DQN(nn.Module):
     '''
     This class implements deep q network with pytorch
