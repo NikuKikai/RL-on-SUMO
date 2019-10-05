@@ -4,7 +4,7 @@ import traci
 import numpy as np
 import random
 from math import ceil
-import seaborn as sb
+#import seaborn as sb
 import matplotlib.pyplot as plt
 from datetime import datetime
 
@@ -260,9 +260,52 @@ class SumoEnv:
             return self._calc_reward_accumulated_wt_max()
         elif self.reward_type == 'wt_squares_sum':
             return self._calc_reward_wt_squares_sum()
+        elif self.reward_type == 'wt_parametric':
+            return self._calc_reward_parametric()
         else:
             print("No reward type defined!!!")
             raise NotImplementedError
+
+    def _calc_reward_parametric(self):
+        '''
+        This function calculates reward, based on parametrization of other reward functions.
+        Currently the parameters are hardcoded but can be changed in future.
+        :return: absolute_reward_dict - a dictionary:  {'intersection_name1': absolute_reward,
+                                                        'intersection_name2': absolute_reward,...},
+        '''
+        absolute_reward_dict = {}
+        for intersection in self.road_structure:
+            wt = 0
+            max_wt = 0
+            for lane_id, _ in self.road_structure[intersection]['lanes']:
+                # total waiting time for lane
+                wt += traci.lane.getWaitingTime(lane_id)
+
+                # find max waiting time for lane
+                car_ids = traci.lane.getLastStepVehicleIDs(lane_id)
+                for car_id in car_ids:
+                    curr_wt = traci.vehicle.getWaitingTime(car_id)
+                    if max_wt < curr_wt:
+                        max_wt = curr_wt
+
+            # Calculate parametric reward
+            absolute_reward = (-1)*((0.6 * wt) + (0.4 * max_wt))
+            absolute_reward_dict[intersection] = absolute_reward
+        return absolute_reward_dict
+
+        wt_max_reward_dict = {}
+        for intersection in self.road_structure:
+            max_wt = 0
+            for lane_id, _ in self.road_structure[intersection]['lanes']:
+                car_ids = traci.lane.getLastStepVehicleIDs(lane_id)
+                for car_id in car_ids:
+                    curr_wt = traci.vehicle.getWaitingTime(car_id)
+                    if max_wt < curr_wt:
+                        max_wt = curr_wt
+            wt_max_reward = - max_wt
+            wt_max_reward_dict[intersection] = wt_max_reward
+        return wt_max_reward_dict
+
 
     def _calc_reward_wt_sum_absolute(self):
         '''
