@@ -8,6 +8,15 @@ from math import ceil
 import matplotlib.pyplot as plt
 from datetime import datetime
 
+VCLASS_TO_MPARAM = {'private':    1,
+                    'emergency': 10,
+                    'authority':  2,
+                    'army':       5,
+                    'vip':        7,
+                    'hov':        5,
+                    'bus':        4,
+                    }
+
 class SumoEnv:
     def __init__(self, args, path_to_sim_file='simulations\\intersection.sumocfg', gui=False):
         self.wt_last = 0.
@@ -262,9 +271,41 @@ class SumoEnv:
             return self._calc_reward_wt_squares_sum()
         elif self.reward_type == 'wt_parametric':
             return self._calc_reward_parametric()
+        elif self.reward_type == 'wt_vehicle_class':
+            return self._calc_reward_vehicle_class()
         else:
             print("No reward type defined!!!")
             raise NotImplementedError
+
+    def _calc_reward_vehicle_class(self):
+        '''
+        This function calculates reward, based on parametrization of other reward functions with enhanced scale for
+        total waiting time of spacial purpose road users, for example: reduced reward would be given for waiting
+        spacial purpose road users (ambulance for example).
+        Currently the parameters are hardcoded but can be changed in future.
+        :return: absolute_reward_dict - a dictionary:  {'intersection_name1': absolute_reward,
+                                                        'intersection_name2': absolute_reward,...},
+        '''
+        absolute_reward_dict = {}
+        for intersection in self.road_structure:
+            wt = 0
+            max_wt = 0
+            spacial_purpose_users_wt = 0
+            for lane_id, _ in self.road_structure[intersection]['lanes']:
+                car_ids = traci.lane.getLastStepVehicleIDs(lane_id)
+                for car_id in car_ids:
+                    curr_wt = traci.vehicle.getWaitingTime(car_id)
+                    # Multiply wt factor based on this vehicle class
+                    curr_wt = curr_wt * VCLASS_TO_MPARAM[traci.getVehicleClass(car_id)]
+                    # Total waiting time
+                    wt += curr_wt
+                    if max_wt < curr_wt:
+                        max_wt = curr_wt
+
+            # Calculate parametric reward
+            absolute_reward = (-1) * ((0.6 * wt) + (0.4 * max_wt))
+            absolute_reward_dict[intersection] = absolute_reward
+        return absolute_reward_dict
 
     def _calc_reward_parametric(self):
         '''
@@ -292,19 +333,6 @@ class SumoEnv:
             absolute_reward = (-1)*((0.6 * wt) + (0.4 * max_wt))
             absolute_reward_dict[intersection] = absolute_reward
         return absolute_reward_dict
-
-        wt_max_reward_dict = {}
-        for intersection in self.road_structure:
-            max_wt = 0
-            for lane_id, _ in self.road_structure[intersection]['lanes']:
-                car_ids = traci.lane.getLastStepVehicleIDs(lane_id)
-                for car_id in car_ids:
-                    curr_wt = traci.vehicle.getWaitingTime(car_id)
-                    if max_wt < curr_wt:
-                        max_wt = curr_wt
-            wt_max_reward = - max_wt
-            wt_max_reward_dict[intersection] = wt_max_reward
-        return wt_max_reward_dict
 
 
     def _calc_reward_wt_sum_absolute(self):
