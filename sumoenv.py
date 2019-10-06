@@ -239,7 +239,7 @@ class SumoEnv:
 
         # Perform multiple steps of simulation.
         for _ in range(self.sim_steps):
-            self.sim_step()
+            self._sim_step()
 
         # Get the new_state of all intersections.
         new_state = self.get_state()
@@ -252,14 +252,29 @@ class SumoEnv:
 
         return new_state, reward, done
 
-    def sim_step(self):
+    def _sim_step(self):
         traci.simulationStep()
         if self.capture_each > 0 and self.gui_active:
-            name = 'episode_' + str(self.curr_episode) + '_step_' + str(self.steps_done) + '.PNG'
+            # TODO: maybe create some smarter parser.
+            wt = str(self._calc_wt_for_video())
+            timestamp = str(datetime.now()).replace(':', '_').replace('-', '_').replace('.', '_').replace(' ', '_')
+            name = timestamp + '_episode_' + str(self.curr_episode) + '_step_' + str(self.steps_done) + '_' + wt + '.PNG'
             folder = os.path.join(self.capture_path, 'Episode_'+str(self.curr_episode))
             if not os.path.exists(folder):
                 raise FileNotFoundError
             traci.gui.screenshot("View #0", os.path.join(folder, name))
+
+    def _calc_wt_for_video(self):
+        '''
+        Calculate waiting time in order to add to produce a video.
+        '''
+        wt_list = []
+        for intersection in self.road_structure:
+            wt = 0
+            for lane_id, _ in self.road_structure[intersection]['lanes']:
+                wt += traci.lane.getWaitingTime(lane_id)
+            wt_list.append(str(intersection)+'_'+str(wt)+'_')
+        return wt_list
 
     def calc_reward(self):
         '''
@@ -483,7 +498,7 @@ class SumoEnv:
 
         steps = random.randint(5, heatup)
         for _ in range(steps):
-            self.sim_step()
+            self._sim_step()
         return self.get_state()
 
     def close(self):
