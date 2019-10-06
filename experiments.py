@@ -7,10 +7,9 @@ from datetime import datetime
 class Experiment():
     def __init__(self, args):
         self.args = args
-        self.env = SumoEnv(self.args, path_to_sim_file=args.sim_file, gui=False)
 
         # Create folder for experiments results
-        root_path = 'Experiments'
+        root_path = args.experiment_res_path
         if not os.path.exists(root_path):
             os.makedirs(root_path)
         timestamp = str(datetime.now()).replace(':', '_').replace('-', '_').replace('.', '_').replace(' ', '_')
@@ -18,6 +17,11 @@ class Experiment():
         folder_name = timestamp + '_' + args.rl_algo + '_' + sim_name
         self.res_dir_path = os.path.join(root_path, folder_name)
         os.makedirs(self.res_dir_path)
+
+        # Create env.
+        self.env = SumoEnv(self.args, path_to_sim_file=args.sim_file,
+                           always_gui=False, capture_each=args.capture_each,
+                           capture_path=self.res_dir_path)
 
         # Save args
         self.args_file_path = os.path.join(self.res_dir_path, 'args.txt')
