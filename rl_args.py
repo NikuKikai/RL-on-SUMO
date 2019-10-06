@@ -13,7 +13,7 @@ class default_args():
         # Simulation params
         self.sim_heatup = 20  # simulation run this amount of steps after reset.
         self.sim_max_steps = 3000 # 3000 # simulation ends after this amount of steps.
-        self.sim_steps = 3  # simulation steps performed between two actions.
+        self.sim_steps_per_do_step = 3  # simulation steps performed between two actions.
         self.state_type = 'density_and_speed'  # 'density', 'position', 'density_and_speed'
         self.reward_type = 'wt_sum_absolute'  # 'wt_sum_absolute', 'wt_avg_absolute', 'wt_sum_relative', 'wt_max', 'accumulated_wt_max', 'wt_squares_sum'
 
@@ -25,6 +25,11 @@ class default_args():
         self.optimizer = 'rmsprop' # Adam works bad.
         self.layers = [128, 64, 16] # deep net layers.
 
+        # Results path
+        self.experiment_res_path = 'D:\\Sumo_results'
+
+        # Capture args:
+        self.capture_each = 20 # Do capture each 20 episodes.
 
 class single_intersection_args(default_args):
     def __init__(self):
@@ -32,7 +37,7 @@ class single_intersection_args(default_args):
         # Simulation params
         self.sim_file = 'simulations\\israel_single_intersection.sumocfg'
         # RL param
-        self.episodes = 200  # 200 should be enough
+        self.episodes = 100  # 200 should be enough
         self.eps_decay = 100  # exploration decay rate. bigger is slower. Don't set it above 10000 - it too slow.
 
 class double_intersection_args(default_args):
@@ -41,7 +46,7 @@ class double_intersection_args(default_args):
         # Simulation params
         self.sim_file = 'simulations\\israel_double_intersection.sumocfg'
         # RL param
-        self.episodes = 300 # 300
+        self.episodes = 150 # 300
         self.eps_decay = 100  # exploration decay rate. bigger is slower. Don't set it above 10000 - it too slow.
 
 
@@ -98,4 +103,4 @@ class double_dqn_double_intersection_args(double_intersection_args):
         self.target_update = 0.001  # polyak averaging
         self.rl_algo = 'double_dqn'
         # DL args
-        self.grad_clip = None
+        self.grad_clip = 400
