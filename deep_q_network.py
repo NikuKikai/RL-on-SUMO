@@ -1,6 +1,6 @@
 import torch
 from torch import nn
-
+from torch.nn.functional import relu
 # WORK IN PROCESS
 class DQN_GENERAL(nn.Module):
     def __init__(self, inputs, outputs, layers=[128, 64, 16]):
@@ -8,10 +8,9 @@ class DQN_GENERAL(nn.Module):
         h_sizes = [inputs] + layers
         out_size = outputs
         # Hidden layers
-        self.hidden = []
-        for k in range(len(h_sizes)-1):
+        self.hidden = nn.ModuleList()
+        for k in range(len(h_sizes) - 1):
             self.hidden.append(nn.Linear(h_sizes[k], h_sizes[k + 1]))
-            self.add_module("hidden_layer" + str(k), self.hidden[-1])
 
         # Output layer
         self.out = nn.Linear(h_sizes[-1], out_size)
@@ -19,7 +18,7 @@ class DQN_GENERAL(nn.Module):
     def forward(self, x):
         # Feedforward
         for layer in self.hidden:
-            x = nn.ReLU(layer(x))
+            x = relu(layer(x))
         output= self.out(x.view(x.size(0), -1))
         return output
 
