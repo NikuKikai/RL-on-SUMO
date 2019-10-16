@@ -5,8 +5,9 @@ import os
 from datetime import datetime
 
 class Experiment():
-    def __init__(self, args):
+    def __init__(self, args, show_training_curve=True):
         self.args = args
+        self.show_training_curve = show_training_curve
 
         # Create folder for experiments results
         root_path = args.experiment_res_path
@@ -42,7 +43,7 @@ class Experiment():
                 manager.teach_agents()  # try to optimize if enough samples in memory.
                 state = next_state
 
-            manager.dump_data_on_episode_end(self.res_dir_path, plot=True)
+            manager.dump_data_on_episode_end(self.res_dir_path, plot=self.show_training_curve)
             self.env.close()
 
     def train_with_different_reward_types(self):
