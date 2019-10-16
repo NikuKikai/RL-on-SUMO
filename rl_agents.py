@@ -90,7 +90,7 @@ class DQN_Agent():
     One deep network.
     DQN - to predict Q of a given action, value a state. i.e. Q(s,a) and Q(s', a') for loss calculation.
     '''
-    def __init__(self, state_size, n_actions, args, device='cpu'):
+    def __init__(self, state_size, n_actions, args, device=torch.device("cuda" if torch.cuda.is_available() else "cpu")):
         self.device = device
 
         # Exploration / Exploitation params.
@@ -233,7 +233,7 @@ class Fixed_Q_Targets_Agent(DQN_Agent):
     Policy network - to predict Q of a given action, value a state. i.e. Q(s,a)
     Target network - to predict Q values of action of the next state. i.e. max Q(s', a') for loss calculation.
     '''
-    def __init__(self, state_size, n_actions, args, device):
+    def __init__(self, state_size, n_actions, args, device=torch.device("cuda" if torch.cuda.is_available() else "cpu")):
         super().__init__(state_size, n_actions, args, device=device)
         self.target_net = DQN(state_size, n_actions, layers=self.layers).to(self.device)
         self.target_net.load_state_dict(self.policy_net.state_dict())
@@ -275,7 +275,7 @@ class Double_DQN_Agent(DQN_Agent):
     Then compute loss and do backward step on Policy net.
     Copy with polyak averaging weights from policy net into target net.
     '''
-    def __init__(self, state_size, n_actions, args, device):
+    def __init__(self, state_size, n_actions, args, device=torch.device("cuda" if torch.cuda.is_available() else "cpu")):
         super().__init__(state_size, n_actions, args, device=device)
         self.target_net = DQN(state_size, n_actions, layers=self.layers).to(self.device)
         self.target_net.load_state_dict(self.policy_net.state_dict())
@@ -307,7 +307,7 @@ class Old_Double_DQN_Agent():
     DQN - to predict Q of a given action, value a state. i.e. Q(s,a) and the  a' = argmax Q(s', a)
     Target - used to calc Q(s', a') for loss calculation.
     '''
-    def __init__(self, state_size, n_actions, args, device='cpu'):
+    def __init__(self, state_size, n_actions, args, device=torch.device("cuda" if torch.cuda.is_available() else "cpu")):
         # Get number of actions from gym action space
         self.device = device
 
@@ -445,7 +445,7 @@ class Dueling_DQN_Agent():
 
 class Old_Fixed_Q_Targets_Agent():
 
-    def __init__(self, state_size, n_actions, args, device='cpu'):
+    def __init__(self, state_size, n_actions, args, device=torch.device("cuda" if torch.cuda.is_available() else "cpu")):
         # Get number of actions from gym action space
         self.device = device
 
