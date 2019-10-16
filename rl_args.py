@@ -14,6 +14,7 @@ class default_args():
         self.sim_heatup = 20  # simulation run this amount of steps after reset.
         self.sim_max_steps = 3000 # 3000 # simulation ends after this amount of steps.
         self.sim_steps_per_do_step = 3  # simulation steps performed between two actions.
+        self.gui = True
         self.state_type = 'density_and_speed'  # 'density', 'position', 'density_and_speed'
         self.reward_type = 'wt_sum_absolute'  # 'wt_sum_absolute', 'wt_avg_absolute', 'wt_sum_relative', 'wt_max', 'accumulated_wt_max', 'wt_squares_sum'
 
@@ -26,7 +27,8 @@ class default_args():
         self.layers = [128, 64, 16] # deep net layers.
 
         # Results path
-        self.experiment_res_path = 'D:\\Sumo_results'
+        self.logs_root_path = './logs/'
+        self.experiment_res_path = './logs/experiments/'
 
         # Capture args:
         self.capture_each = 20 # Do capture each 20 episodes.

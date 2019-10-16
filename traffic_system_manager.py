@@ -24,9 +24,9 @@ class TrafficSystemManager:
             if rl_args.rl_algo == 'dqn':
                 raise NotImplementedError
             elif rl_args.rl_algo == 'fixed_q_targets':
-                self.agents_dict[intersection_name] = Fixed_Q_Targets_Agent(input_state_size, num_of_actions, rl_args, device='cuda')
+                self.agents_dict[intersection_name] = Fixed_Q_Targets_Agent(input_state_size, num_of_actions, rl_args)
             elif rl_args.rl_algo == 'double_dqn':
-                self.agents_dict[intersection_name] = Double_DQN_Agent(input_state_size, num_of_actions, rl_args, device='cuda')
+                self.agents_dict[intersection_name] = Double_DQN_Agent(input_state_size, num_of_actions, rl_args)
             else:
                 raise NotImplementedError
 

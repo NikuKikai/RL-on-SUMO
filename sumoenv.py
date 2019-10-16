@@ -8,7 +8,7 @@ from math import ceil
 import matplotlib.pyplot as plt
 from datetime import datetime
 
-VCLASS_TO_MPARAM = {'private':    1,
+VCLASS_TO_MPARAM = {'car':    1,
                     'emergency': 10,
                     'authority':  2,
                     'army':       5,
@@ -18,11 +18,11 @@ VCLASS_TO_MPARAM = {'private':    1,
                     }
 
 class SumoEnv:
-    def __init__(self, args, path_to_sim_file='simulations\\intersection.sumocfg', always_gui=False, capture_each=-1, capture_path=None):
+    def __init__(self, args, capture_path=None):
         self.wt_last = 0.
         self.ncars = 0
         self.max_steps = args.sim_max_steps
-        self.path_to_sim_file = path_to_sim_file
+        self.path_to_sim_file = args.sim_file
         self.curr_episode = -1
 
         # reward and state types
@@ -40,9 +40,8 @@ class SumoEnv:
         else:
             sys.exit("please declare environment variable 'SUMO_HOME'")
 
-        self.capture_each = capture_each # take screenshots of entire episode each 'capture' episode.
-        self.always_gui = always_gui
-        self.gui_active = False
+        self.capture_each = args.capture_each # take screenshots of entire episode each 'capture' episode.
+        self.gui = args.gui
         sumoBinary = os.path.join(os.environ['SUMO_HOME'], 'bin', 'sumo.exe')
         sumoBinary_gui = os.path.join(os.environ['SUMO_HOME'], 'bin', 'sumo-gui.exe')
         self.sumoCmd = [sumoBinary, '-c', self.path_to_sim_file, '--no-warnings'] #,'--no-step-log',
@@ -80,6 +79,12 @@ class SumoEnv:
                 dim_dict[intersection] = (num_of_lanes + num_of_actions, num_of_actions)
             elif self.state_type == 'density_and_speed':
                 dim_dict[intersection] = (2 * num_of_lanes + num_of_actions, num_of_actions)
+            elif self.state_type == 'density_speed_emergency':
+                dim_dict[intersection] = (3 * num_of_lanes + num_of_actions, num_of_actions)
+            elif self.state_type == 'density_speed_bus':
+                dim_dict[intersection] = (3 * num_of_lanes + num_of_actions, num_of_actions)
+            elif self.state_type == 'density_speed_bus_emergency':
+                dim_dict[intersection] = (4 * num_of_lanes + num_of_actions, num_of_actions)
             else:
                 raise NotImplementedError
 
@@ -92,8 +97,55 @@ class SumoEnv:
             return self._get_state_probabilistic_position()
         elif self.state_type == 'density_and_speed':
             return self._get_state_density_and_speed()
+        elif self.state_type == 'density_speed_emergency':
+            return self._get_state_density_speed_vehicle_types(['emergency'])
+        elif self.state_type == 'density_speed_bus':
+            return self._get_state_density_speed_vehicle_types(['bus'])
+        elif self.state_type == 'density_speed_bus_emergency':
+            return self._get_state_density_speed_vehicle_types(['bus', 'emergency'])
         else:
             raise NotImplementedError
+
+    def _get_state_density_speed_vehicle_types(self, types):
+        '''
+        This function calculates a state of each intersection.
+        The state representation is lane occupancy.
+        https://sumo.dlr.de/pydoc/traci._lane.html#LaneDomain-getLastStepOccupancy
+        lane speed.
+        https://sumo.dlr.de/pydoc/traci._lane.html#LaneDomain-getLastStepMeanSpeed
+        number of vehicles in lane matching type with one of provided types
+        http://sumo.sourceforge.net/pydoc/traci._vehicle.html#VehicleDomain-getTypeID
+        :return: A dictionary: {'intersection_name1': state,
+                                'intersection_name2': state,...}
+        '''
+        env_state = {}
+
+        for intersection in self.road_structure:
+            num_of_phases = self.road_structure[intersection]['num_of_phases']
+            num_of_lanes = self.road_structure[intersection]['num_of_lanes']
+
+            # Prepare empty state of fixed size.
+            # TODO: consider moving this to parsing part. The empty state is same during all time...
+            states_per_lane = (2 + len(types))
+            state_size = states_per_lane * num_of_lanes
+            state_size += num_of_phases
+            state = np.zeros(state_size , dtype=np.float32)
+
+            for ilane, (lane_id, _) in enumerate(self.road_structure[intersection]['lanes']):
+                state[states_per_lane * ilane] = traci.lane.getLastStepOccupancy(lane_id)  # add density
+                state[states_per_lane * ilane + 1] = traci.lane.getLastStepMeanSpeed(lane_id)  # add mean speed
+                # add number of specific requested types
+                for itype, stype in enumerate(types):
+                    num_requested = sum(traci.vehicle.getTypeID(id) == stype
+                                        for id in traci.lane.getLastStepVehicleIDs(lane_id))
+                    state[states_per_lane + 2 + itype] = num_requested
+
+            # Adding phase as one hot vector to state.
+            state[states_per_lane * num_of_lanes: states_per_lane * num_of_lanes + num_of_phases] = \
+                np.eye(num_of_phases)[traci.trafficlight.getPhase(intersection)]
+
+            env_state[intersection] = state
+        return env_state
 
     def _get_state_density_and_speed(self):
         '''
@@ -225,6 +277,13 @@ class SumoEnv:
             env_state[intersection] = state
         return env_state
 
+    def _calc_mediterian_phases(self, prev_phase, next_phase):
+        r = None
+        y = ''.join(['y' if (c == 'G' and n == 'r') else c for c, n in zip(prev_phase, next_phase)])
+        r = ''.join(['r' if (c == 'y') else c for c in y])
+        return [y, r]
+
+
     def do_step(self, action_dict):
         '''
         This method applies an action on the environment, i.e. set a phase
@@ -240,11 +299,31 @@ class SumoEnv:
 
         self.steps_done += self.sim_steps
         done = False
-
+        mid_phases = dict()
         # Apply actions on intersection one by one.
+        action_dict_copy = action_dict.copy()
+#        for intersection in self.road_structure:
+#            action = np.squeeze(action_dict[intersection])
+#            current_state = traci.trafficlight.getPhase(intersection)
+#            _ , current_state = self.road_structure[intersection]['phases_description'][current_state]
+#            _ , next_state = self.road_structure[intersection]['phases_description'][action]
+#            mid_phases[intersection] = self._calc_mediterian_phases(current_state, next_state)
+#
+#        for _ in range(2):
+#            for intersection in self.road_structure:
+#                phase = mid_phases[intersection].pop(0)
+#                traci.trafficlight.setRedYellowGreenState(intersection, phase)
+#                traci.trafficlight.setPhaseDuration(intersection, 4)
+#            for _ in range(4):
+#                self._sim_step()
+#            self.steps_done += 4
+
         for intersection in self.road_structure:
-            action = np.squeeze(action_dict[intersection])
+            action = np.squeeze(action_dict_copy[intersection])
             traci.trafficlight.setPhase(intersection, action)
+
+
+
 
         # Perform multiple steps of simulation.
         for _ in range(self.sim_steps):
@@ -263,7 +342,7 @@ class SumoEnv:
 
     def _sim_step(self):
         traci.simulationStep()
-        if self.capture_each > 0 and self.gui_active:
+        if self.capture_each > 0 and self.gui:
             # TODO: maybe create some smarter parser.
             wt = str(self._calc_wt_for_video())
             timestamp = str(datetime.now()).replace(':', '_').replace('-', '_').replace('.', '_').replace(' ', '_')
@@ -328,7 +407,7 @@ class SumoEnv:
                 for car_id in car_ids:
                     curr_wt = traci.vehicle.getWaitingTime(car_id)
                     # Multiply wt factor based on this vehicle class
-                    curr_wt = curr_wt * VCLASS_TO_MPARAM[traci.getVehicleClass(car_id)]
+                    curr_wt = curr_wt * VCLASS_TO_MPARAM[traci.vehicle.getTypeID(car_id)]
                     # Total waiting time
                     wt += curr_wt
                     if max_wt < curr_wt:
@@ -555,15 +634,12 @@ class SumoEnv:
 
         if self.capture_each > 0 and self.curr_episode % self.capture_each == 0:
             # To perform capture we need to open SUMO-gui
-            self.gui_active = True
             traci.start(self.sumoCmd_gui, label='AI-project')
             # Create a folder for new episode
             os.mkdir(os.path.join(self.capture_path, 'Episode_'+str(self.curr_episode)))
-        elif self.always_gui:
-            self.gui_active = True
+        elif self.gui:
             traci.start(self.sumoCmd_gui, label='AI-project')
         else:
-            self.gui_active = False
             traci.start(self.sumoCmd, label='AI-project', )
 
         steps = random.randint(5, heatup)

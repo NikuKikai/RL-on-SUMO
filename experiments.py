@@ -19,9 +19,7 @@ class Experiment():
         os.makedirs(self.res_dir_path)
 
         # Create env.
-        self.env = SumoEnv(self.args, path_to_sim_file=args.sim_file,
-                           always_gui=False, capture_each=args.capture_each,
-                           capture_path=self.res_dir_path)
+        self.env = SumoEnv(self.args, capture_path=self.res_dir_path)
 
         # Save args
         self.args_file_path = os.path.join(self.res_dir_path, 'args.txt')

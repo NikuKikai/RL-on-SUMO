@@ -12,7 +12,7 @@ args = fixed_q_targets_args()
 env_train = se.SumoEnv(args, gui_f=False)
 env_test = se.SumoEnv(args, gui_f=True)
 
-agent = Fixed_Q_Targets_Agent(84, 4, args, device='cuda')
+agent = Fixed_Q_Targets_Agent(84, 4, args)
 
 #agent = DQN_Agent(84, 4, args, device='cuda')
 
