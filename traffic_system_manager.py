@@ -143,7 +143,7 @@ class TrafficSystemManager:
             plt.tight_layout()
             plt.draw()
             plt.pause(0.001)
-            plt.clf()
+        plt.clf()
 
     def get_learn_curve(self):
         return self.avg_rewards_dict
