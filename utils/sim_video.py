@@ -1,7 +1,7 @@
 import cv2
 import os
 from tqdm import tqdm
-
+import argparse
 
 def gen_video(path, delete_images=True):
     '''
@@ -86,7 +86,12 @@ def gen_video(path, delete_images=True):
 
 
 def main():
-    gen_video('D:\\Sumo_results\\2019_10_04_16_49_45_609477_double_dqn_israel_double_intersection\\capture')
-    #gen_video('D:\\Sumo_results\\2019_10_04_12_17_50_744978_double_dqn_israel_double_intersection\\capture')
+    parser = argparse.ArgumentParser(description="Creates video from collection of images")
+    parser.add_argument("-dp", "--dir-path", type=str, dest='path', required=True,
+                        help='path to directory with images')
+    args = parser.parse_args()
+    gen_video(args.path)
 
-main()
+
+if __name__ == '__main__':
+    main()

@@ -1,20 +1,13 @@
-from deep_q_network import DQN
-
+from Agents.DQN import DQN
 import math
 import random
 import numpy as np
-from collections import namedtuple
-
 import torch
-import torch.nn as nn
 import torch.optim as optim
 import torch.nn.functional as F
-import torchvision.transforms as T
-from replay_memory import Transition
-from replay_memory import ReplayMemory
+from utils.replay_memory import Transition, ReplayMemory
 from datetime import datetime
 from random import randrange
-import utils
 import os
 
 class Random_Agent():
@@ -226,7 +219,6 @@ class DQN_Agent():
         ckpt_path = os.path.join(ckpt_folder, 'policy_net_state_dict.pth')
         torch.save(self.policy_net.state_dict(), ckpt_path)
 
-
 class Fixed_Q_Targets_Agent(DQN_Agent):
     '''
     This agent implements Fixed Q-Targets algorithm. There are two deep networks.
@@ -258,7 +250,6 @@ class Fixed_Q_Targets_Agent(DQN_Agent):
         # Compute Huber loss
         loss = F.smooth_l1_loss(state_action_values, expected_state_action_values)
         return loss
-
 
 class Double_DQN_Agent(DQN_Agent):
     '''
@@ -300,7 +291,9 @@ class Double_DQN_Agent(DQN_Agent):
 
 
 
-# TODO: the following code should be deleted.
+#============================================================
+# Unused agents
+#============================================================
 class Old_Double_DQN_Agent():
     '''
     Double DQN Agents
@@ -436,12 +429,10 @@ class Old_Double_DQN_Agent():
         for target_param, param in zip(self.target_net.parameters(), self.policy_net.parameters()):
             target_param.data.copy_(tau * param + (1 - tau) * target_param)
 
-
 class Dueling_DQN_Agent():
     '''
     Dueling Double DQN Agents
     '''
-
 
 class Old_Fixed_Q_Targets_Agent():
 

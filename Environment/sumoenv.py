@@ -4,10 +4,10 @@ import traci
 import numpy as np
 import random
 from math import ceil
-#import seaborn as sb
 import matplotlib.pyplot as plt
 from datetime import datetime
 
+# Weight argument for each vClass, used in calculation of weighted reward
 VCLASS_TO_MPARAM = {'car':    1,
                     'emergency': 10,
                     'authority':  2,
@@ -51,7 +51,7 @@ class SumoEnv:
         self.capture_path = os.path.join(capture_path, 'capture')
         os.makedirs(self.capture_path)
 
-        # A data structure which represents the roads conncetions
+        # A data structure which represents the roads connections
         self.road_structure = {}
         self.parse_env()
 
@@ -277,13 +277,6 @@ class SumoEnv:
             env_state[intersection] = state
         return env_state
 
-    def _calc_mediterian_phases(self, prev_phase, next_phase):
-        r = None
-        y = ''.join(['y' if (c == 'G' and n == 'r') else c for c, n in zip(prev_phase, next_phase)])
-        r = ''.join(['r' if (c == 'y') else c for c in y])
-        return [y, r]
-
-
     def do_step(self, action_dict):
         '''
         This method applies an action on the environment, i.e. set a phase
@@ -302,28 +295,9 @@ class SumoEnv:
         mid_phases = dict()
         # Apply actions on intersection one by one.
         action_dict_copy = action_dict.copy()
-#        for intersection in self.road_structure:
-#            action = np.squeeze(action_dict[intersection])
-#            current_state = traci.trafficlight.getPhase(intersection)
-#            _ , current_state = self.road_structure[intersection]['phases_description'][current_state]
-#            _ , next_state = self.road_structure[intersection]['phases_description'][action]
-#            mid_phases[intersection] = self._calc_mediterian_phases(current_state, next_state)
-#
-#        for _ in range(2):
-#            for intersection in self.road_structure:
-#                phase = mid_phases[intersection].pop(0)
-#                traci.trafficlight.setRedYellowGreenState(intersection, phase)
-#                traci.trafficlight.setPhaseDuration(intersection, 4)
-#            for _ in range(4):
-#                self._sim_step()
-#            self.steps_done += 4
-
         for intersection in self.road_structure:
             action = np.squeeze(action_dict_copy[intersection])
             traci.trafficlight.setPhase(intersection, action)
-
-
-
 
         # Perform multiple steps of simulation.
         for _ in range(self.sim_steps):
@@ -445,7 +419,6 @@ class SumoEnv:
             absolute_reward_dict[intersection] = absolute_reward
         return absolute_reward_dict
 
-
     def _calc_reward_wt_sum_absolute(self):
         '''
         This function calculates reward.
@@ -481,7 +454,6 @@ class SumoEnv:
             absolute_reward = - wt #/ 10e3  # scale factor
             absolute_reward_dict[intersection] = absolute_reward
         return absolute_reward_dict
-
 
     def _calc_reward_wt_sum_relative(self):
         '''
@@ -649,3 +621,5 @@ class SumoEnv:
 
     def close(self):
         traci.close()
+
+

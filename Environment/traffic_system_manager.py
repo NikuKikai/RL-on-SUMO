@@ -1,6 +1,5 @@
-from rl_agents import DQN_Agent
-from rl_agents import Fixed_Q_Targets_Agent
-from rl_agents import Double_DQN_Agent
+from Agents.rl_agents import Fixed_Q_Targets_Agent
+from Agents.rl_agents import Double_DQN_Agent
 import numpy as np
 import matplotlib.pyplot as plt
 import os
