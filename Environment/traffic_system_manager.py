@@ -109,7 +109,7 @@ class TrafficSystemManager:
             self.avg_rewards_dict[key].append(np.mean(self.rewards_dict[key]))
             self.rewards_dict[key] = []
 
-        for key in self.avg_rewards_dict:
+        for key in self.avg_rewards_dict.keys():
             avg_rewards = self.avg_rewards_dict[key]
             plt.subplot(3,1,1)
             plt.title('Average Reward')
@@ -118,14 +118,14 @@ class TrafficSystemManager:
             plt.ylabel(self.args.reward_type)
             plt.xlabel('Episodes')
             plt.legend()
-        for key in self.cumulative_rewards_dict:
+        for key in self.cumulative_rewards_dict.keys():
             cumul_rewards = self.cumulative_rewards_dict[key]
             plt.subplot(3, 1, 2)
             plt.title('Cumulative rewards')
             plt.plot(range(len(cumul_rewards)), cumul_rewards, label=key)
             plt.xlabel('TSM steps')
             plt.legend()
-        for key in self.exploration_rate_dict:
+        for key in self.exploration_rate_dict.keys():
             exp_rate = self.exploration_rate_dict[key]
             plt.subplot(3, 1, 3)
             plt.title('Exploration Rate. Eps decay = ' + str(self.args.eps_decay))
@@ -142,7 +142,8 @@ class TrafficSystemManager:
             plt.tight_layout()
             plt.draw()
             plt.pause(0.001)
-            plt.clf()
+        plt.clf()
+
 
     def get_learn_curve(self):
         return self.avg_rewards_dict

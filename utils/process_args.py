@@ -40,7 +40,7 @@ def process_arguments():
                         help='RL agent to use, supported agents: [fixed_q_targets, double_dqn] , default: fixed_q_targets')
     args, remaining = parser.parse_known_args()
     agent = args.agent
-    network_type = args.cfg.split('/')[1] # parsing network type - single / double
+    network_type = args.cfg.split('/')[2] # parsing network type - single / double
     agents_args = load_agents_args(agent, network_type)
     parser.add_argument("-e", "--episodes", type=int, default=agents_args.episodes, dest='episodes',
                         help='Number of episodes for simulation, default: agent\'s default value')

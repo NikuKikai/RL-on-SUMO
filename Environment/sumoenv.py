@@ -1,11 +1,17 @@
 import os
 import sys
+from tokenize import String
+
 import traci
 import numpy as np
 import random
 from math import ceil
 import matplotlib.pyplot as plt
 from datetime import datetime
+import csv
+import os.path as osp
+import json
+import time
 
 # Weight argument for each vClass, used in calculation of weighted reward
 VCLASS_TO_MPARAM = {'car':    1,
@@ -18,6 +24,8 @@ VCLASS_TO_MPARAM = {'car':    1,
                     }
 
 class SumoEnv:
+    EXT = "SumoEnv.csv"
+    f = None
     def __init__(self, args, capture_path=None):
         self.wt_last = 0.
         self.ncars = 0
@@ -48,13 +56,24 @@ class SumoEnv:
         self.sumoCmd_gui = [sumoBinary_gui, '-c', self.path_to_sim_file, '--start', '--quit-on-end']
 
         # Path for saving screenshots
+        logger_path = capture_path
         self.capture_path = os.path.join(capture_path, 'capture')
         os.makedirs(self.capture_path)
 
+        self.vehicles = {}
         # A data structure which represents the roads connections
         self.road_structure = {}
         self.parse_env()
 
+        # Create csv logger
+        if logger_path:
+            self.results_writer = ResultsWriter(self.road_structure.keys(), logger_path + "/rewards_log" ,
+                header={"state_type": self.state_type,
+                            "reward_type": self.reward_type,
+                            "time_start": time.time()}
+            )
+        else:
+            self.results_writer = None
         return
 
     def get_road_structure(self):
@@ -85,6 +104,8 @@ class SumoEnv:
                 dim_dict[intersection] = (3 * num_of_lanes + num_of_actions, num_of_actions)
             elif self.state_type == 'density_speed_bus_emergency':
                 dim_dict[intersection] = (4 * num_of_lanes + num_of_actions, num_of_actions)
+            elif self.state_type == 'density_queue_phases':
+                dim_dict[intersection] = (2 * num_of_lanes + num_of_actions, num_of_actions)
             else:
                 raise NotImplementedError
 
@@ -103,6 +124,8 @@ class SumoEnv:
             return self._get_state_density_speed_vehicle_types(['bus'])
         elif self.state_type == 'density_speed_bus_emergency':
             return self._get_state_density_speed_vehicle_types(['bus', 'emergency'])
+        elif self.state_type == 'density_queue_phases':
+            return self._get_state_density_queue_phases()
         else:
             raise NotImplementedError
 
@@ -204,6 +227,28 @@ class SumoEnv:
                 state[num_of_lanes: num_of_lanes + num_of_phases] = \
                     np.eye(num_of_phases)[traci.trafficlight.getPhase(intersection)]
 
+            env_state[intersection] = state
+        return env_state
+
+    def _get_state_density_queue_phases(self):
+        '''
+        density - vector with density value for each lane
+        queue - vector with queue value (what is the ratio between total size of stopped traffic and total lane length)
+                for each lane
+        phases - one hot vector
+        '''
+        env_state = {}
+
+        for intersection in self.road_structure:
+            num_of_phases = self.road_structure[intersection]['num_of_phases']
+            num_of_lanes = self.road_structure[intersection]['num_of_lanes']
+
+            density = self._get_lanes_density(self.road_structure[intersection]['lanes'])
+            queue = self._get_lanes_queue(self.road_structure[intersection]['lanes'])
+            # Adding phase as one hot vector.
+            phases = np.eye(num_of_phases)[traci.trafficlight.getPhase(intersection)]
+
+            state = np.concatenate((density,queue,phases), axis=None)
             env_state[intersection] = state
         return env_state
 
@@ -310,8 +355,11 @@ class SumoEnv:
 
         if self.steps_done >= self.max_steps:
             done = True
+            episode_info = reward.copy()
+            episode_info["episodes"] = self.curr_episode
             self.steps_done = 0
-
+            if self.results_writer:
+                self.results_writer.write_row(episode_info)
         return new_state, reward, done
 
     def _sim_step(self):
@@ -325,6 +373,20 @@ class SumoEnv:
             if not os.path.exists(folder):
                 raise FileNotFoundError
             traci.gui.screenshot("View #0", os.path.join(folder, name))
+
+    @staticmethod
+    def _get_lanes_queue(lanes):
+        total_vehicle_length = 7.5
+        return [round(min(1, traci.lane.getLastStepHaltingNumber(lane) /
+                      (traci.lane.getLength(lane) / total_vehicle_length)),3)
+                for lane, _ in lanes]
+
+    @staticmethod
+    def _get_lanes_density(lanes):
+        total_vehicle_length = 7.5
+        return [round(min(1, traci.lane.getLastStepVehicleNumber(lane) /
+                      (traci.lane.getLength(lane) / total_vehicle_length)),3)
+                for lane, _ in lanes]
 
     def _calc_wt_for_video(self):
         '''
@@ -359,6 +421,8 @@ class SumoEnv:
             return self._calc_reward_parametric()
         elif self.reward_type == 'wt_vehicle_class':
             return self._calc_reward_vehicle_class()
+        elif self.reward_type == 'wt_total_acc_relative':
+            return self._calc_reward_wt_relative_acc()
         else:
             print("No reward type defined!!!")
             raise NotImplementedError
@@ -435,6 +499,28 @@ class SumoEnv:
             absolute_reward = - wt #/ 10e3  # scale factor
             absolute_reward_dict[intersection] = absolute_reward
         return absolute_reward_dict
+
+    def _calc_reward_wt_relative_acc(self):
+        result_dict = {}
+        for intersection in self.road_structure:
+            veh_list = []
+            for lane_id, _ in self.road_structure[intersection]['lanes']:
+                car_ids = traci.lane.getLastStepVehicleIDs(lane_id)
+                veh_list += car_ids
+
+            wait_time = 0.0
+            for veh in veh_list:
+                veh_edge = traci.lane.getEdgeID(traci.vehicle.getLaneID(veh))
+                acc = traci.vehicle.getAccumulatedWaitingTime(veh)
+                if veh not in self.vehicles:
+                    self.vehicles[veh] = {veh_edge : acc}
+                else:
+                    self.vehicles[veh][veh_edge] = acc - sum(
+                        [self.vehicles[veh][lane] for lane in self.vehicles[veh].keys() if lane != veh_edge])
+                # Total waiting time of all vehicles
+                wait_time += self.vehicles[veh][veh_edge]
+            result_dict[intersection] =  ((-1)*wait_time)
+        return result_dict
 
     def _calc_reward_wt_avg_absolute(self):
         '''
@@ -533,7 +619,7 @@ class SumoEnv:
 
     def parse_env(self):
         # start simulation only for parsing. Without gui.
-        traci.start(self.sumoCmd, label='AI-project', )
+        traci.start(self.sumoCmd, label='AI-project')
 
         junctions = list(traci.trafficlight.getIDList())
         for junc in junctions:
@@ -568,6 +654,8 @@ class SumoEnv:
                 phase_list.append(
                     (idx, traci.trafficlight.getCompleteRedYellowGreenDefinition(junc)[0].phases[idx].state))
             self.road_structure[junc]['phases_description'] = phase_list
+            self.road_structure[junc]['last_wt'] = 0
+
         self.print_env()
 
         traci.close()
@@ -620,6 +708,33 @@ class SumoEnv:
         return self.get_state()
 
     def close(self):
+        if self.f is not None:
+            self.f.close()
         traci.close()
 
+class ResultsWriter(object):
+    def __init__(self, keys, filename, header='', extra_keys=()):
+        self.extra_keys = extra_keys
+        assert filename is not None
+        if not filename.endswith(SumoEnv.EXT):
+            if osp.isdir(filename):
+                filename = osp.join(filename, SumoEnv.EXT)
+            else:
+                filename = filename + "." + SumoEnv.EXT
+        self.f = open(filename, "wt", newline='')
+        if isinstance(header, dict):
+            header = '# {} \n'.format(json.dumps(header))
+        self.f.write(header)
+        l = list(keys)
+        l.insert(0, 'episodes')
+        self.logger = csv.DictWriter(self.f, fieldnames=tuple(l))
+        #self.logger = csv.DictWriter(self.f, fieldnames=(
+        #                   "episodes", ",".join(keys)
+        #                   ))
+        self.logger.writeheader()
+        self.f.flush()
 
+    def write_row(self, epinfo):
+        if self.logger:
+            self.logger.writerow(epinfo)
+            self.f.flush()

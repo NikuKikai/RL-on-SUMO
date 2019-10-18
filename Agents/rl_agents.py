@@ -104,7 +104,7 @@ class DQN_Agent():
         # Deep q networks params
         self.layers = args.layers
         self.batch_size = args.batch_size
-        self.policy_net = DQN(state_size, n_actions, layers=self.layers).to(self.device)
+        self.policy_net = DQN(state_size, n_actions, layers=self.layers).to(self.device).float()
         self.target_net = None
         self.grad_clip = args.grad_clip
 
@@ -122,9 +122,9 @@ class DQN_Agent():
 
     def add_to_memory(self, state, action, next_state, reward):
         self.rewards_list.append(reward)
-        state = torch.from_numpy(state)
+        state = torch.from_numpy(state).float()
         action = torch.tensor([action])
-        next_state = torch.from_numpy(next_state)
+        next_state = torch.from_numpy(next_state).float()
         reward = torch.tensor([reward])
         self.memory.push(state, action, next_state, reward)
 
@@ -138,7 +138,7 @@ class DQN_Agent():
                 # t.max(1) will return largest column value of each row.
                 # second column on max result is index of where max element was
                 # found, so we pick action with the larger expected reward.
-                state = torch.from_numpy(state).to(self.device) # Convert to tensor.
+                state = torch.from_numpy(state).float().to(self.device) # Convert to tensor.
                 state = state.unsqueeze(0) # Add batch dimension.
                 return self.policy_net(state).max(1)[1].view(1, 1)
         else:
@@ -354,9 +354,9 @@ class Old_Double_DQN_Agent():
 
     def add_to_memory(self, state, action, next_state, reward):
         self.rewards_list.append(reward)
-        state = torch.from_numpy(state)
+        state = torch.from_numpy(state).float()
         action = torch.tensor([action])
-        next_state = torch.from_numpy(next_state)
+        next_state = torch.from_numpy(next_state).float()
         reward = torch.tensor([reward])
         self.memory.push(state, action, next_state, reward)
 
@@ -371,7 +371,7 @@ class Old_Double_DQN_Agent():
                 # t.max(1) will return largest column value of each row.
                 # second column on max result is index of where max element was
                 # found, so we pick action with the larger expected reward.
-                state = torch.from_numpy(state).to(self.device) # Convert to tensor.
+                state = torch.from_numpy(state).float().to(self.device) # Convert to tensor.
                 state = state.unsqueeze(0) # Add batch dimeniton.
                 action = self.policy_net(state).max(1)[1].view(1, 1)
         else:
@@ -490,9 +490,9 @@ class Old_Fixed_Q_Targets_Agent():
 
     def add_to_memory(self, state, action, next_state, reward):
         self.rewards_list.append(reward)
-        state = torch.from_numpy(state)
+        state = torch.from_numpy(state).float()
         action = torch.tensor([action])
-        next_state = torch.from_numpy(next_state)
+        next_state = torch.from_numpy(next_state).float()
         reward = torch.tensor([reward])
         self.memory.push(state, action, next_state, reward)
 
@@ -507,7 +507,7 @@ class Old_Fixed_Q_Targets_Agent():
                 # t.max(1) will return largest column value of each row.
                 # second column on max result is index of where max element was
                 # found, so we pick action with the larger expected reward.
-                state = torch.from_numpy(state).to(self.device)  # Convert to tensor.
+                state = torch.from_numpy(state).float().to(self.device)  # Convert to tensor.
                 state = state.unsqueeze(0)  # Add batch dimeniton.
                 action = self.policy_net(state).max(1)[1].view(1, 1)
         else:
