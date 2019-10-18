@@ -364,7 +364,8 @@ class SumoEnv:
 
     def _sim_step(self):
         traci.simulationStep()
-        if self.capture_each > 0 and self.gui:
+        if (self.gui=='capture' or self.gui == 'enable') and self.capture_each > 0 and (self.curr_episode % self.capture_each == 0):
+        #if self.capture_each > 0 and self.gui:
             # TODO: maybe create some smarter parser.
             wt = str(self._calc_wt_for_video())
             timestamp = str(datetime.now()).replace(':', '_').replace('-', '_').replace('.', '_').replace(' ', '_')
@@ -515,6 +516,7 @@ class SumoEnv:
                 if veh not in self.vehicles:
                     self.vehicles[veh] = {veh_edge : acc}
                 else:
+                    #self.vehicles[veh][veh_edge] = acc
                     self.vehicles[veh][veh_edge] = acc - sum(
                         [self.vehicles[veh][lane] for lane in self.vehicles[veh].keys() if lane != veh_edge])
                 # Total waiting time of all vehicles
@@ -692,12 +694,12 @@ class SumoEnv:
         self.ncars = 0
         self.curr_episode += 1
 
-        if self.capture_each > 0 and self.curr_episode % self.capture_each == 0:
+        if (self.capture_each > 0 and (self.gui == 'capture' or self.gui == 'enable')) and (self.curr_episode % self.capture_each == 0):
             # To perform capture we need to open SUMO-gui
             traci.start(self.sumoCmd_gui, label='AI-project')
             # Create a folder for new episode
             os.mkdir(os.path.join(self.capture_path, 'Episode_'+str(self.curr_episode)))
-        elif self.gui:
+        elif self.gui == 'enable':
             traci.start(self.sumoCmd_gui, label='AI-project')
         else:
             traci.start(self.sumoCmd, label='AI-project', )

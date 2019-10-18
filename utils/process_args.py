@@ -34,8 +34,8 @@ def process_arguments():
                                                  "\tAmeen Ali, ameen.ali[at]gmail.com",
                                      epilog="example usage:" \
                                             "python ./main.py")
-    parser.add_argument("-sc", "--sumo-cfg", type=str, default='./networks/single/Israel/network.sumocfg', dest='cfg',
-                        help='path to desired simulation configuration file, default: ./networks/single/Israel/network.sumocfg')
+    parser.add_argument("-sc", "--sumo-cfg", type=str, default='./networks/double/Israel_zipping/network.sumocfg', dest='cfg',
+                        help='path to desired simulation configuration file, default: ./networks/double/Israel_zipping/network.sumocfg')
     parser.add_argument("-a", "--agent", type=str, default='fixed_q_targets', dest='agent',
                         help='RL agent to use, supported agents: [fixed_q_targets, double_dqn] , default: fixed_q_targets')
     args, remaining = parser.parse_known_args()
@@ -71,8 +71,8 @@ def process_arguments():
                         help='Capacity of replay buffer, default: agent\'s default value')
     parser.add_argument("-sl", "--sim-length", type=int, default=agents_args.sim_max_steps, dest='sim_length',
                         help='Simulation length in steps, default: agent\'s default value')
-    parser.add_argument("-gd", "--gui-disable", default=agents_args.gui, action='store_false', dest='gui',
-                        help='Disable simulator GUI, default: agent\'s default value')
+    parser.add_argument("-gm", "--gui-mode", default='disable', type=str, dest='gui',
+                        help='GUI mode: [diasble, enable, capture], default: disable')
     args, remaining = parser.parse_known_args()
     # Update agents arguments based on parsed users arguments
     agents_args.episodes = args.episodes
@@ -88,7 +88,10 @@ def process_arguments():
     agents_args.replay_size = args.replay_size
     agents_args.sim_max_steps = args.sim_length
     agents_args.sim_file = args.cfg
-    agents_args.gui = args.gui
+    if agents_args.capture_each > 0:
+        agents_args.gui = 'capture'
+    else:
+        agents_args.gui = args.gui
     # Optional future params
     #parser.add_argument("-load", default=False, action='store_true', dest='load',
     #                    help='load saved weights and net data from training, default: False')
