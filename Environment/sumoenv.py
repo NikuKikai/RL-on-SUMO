@@ -96,6 +96,12 @@ class SumoEnv:
                 dim_dict[intersection] = (lane_len * num_of_lanes + num_of_actions, num_of_actions)
             elif self.state_type == 'density':
                 dim_dict[intersection] = (num_of_lanes + num_of_actions, num_of_actions)
+            elif self.state_type == 'mean_speed':
+                dim_dict[intersection] = (num_of_lanes + num_of_actions, num_of_actions)
+            elif self.state_type == 'queue':
+                dim_dict[intersection] = (num_of_lanes + num_of_actions, num_of_actions)
+            elif self.state_type == 'vehicle_types_emergency':
+                dim_dict[intersection] = (num_of_lanes + num_of_actions, num_of_actions)
             elif self.state_type == 'density_and_speed':
                 dim_dict[intersection] = (2 * num_of_lanes + num_of_actions, num_of_actions)
             elif self.state_type == 'density_speed_emergency':
@@ -104,8 +110,10 @@ class SumoEnv:
                 dim_dict[intersection] = (3 * num_of_lanes + num_of_actions, num_of_actions)
             elif self.state_type == 'density_speed_bus_emergency':
                 dim_dict[intersection] = (4 * num_of_lanes + num_of_actions, num_of_actions)
-            elif self.state_type == 'density_queue_phases':
+            elif self.state_type == 'density_queue':
                 dim_dict[intersection] = (2 * num_of_lanes + num_of_actions, num_of_actions)
+            elif self.state_type == 'density_queue_mean_speed':
+                dim_dict[intersection] = (3 * num_of_lanes + num_of_actions, num_of_actions)
             else:
                 raise NotImplementedError
 
@@ -116,6 +124,12 @@ class SumoEnv:
             return self._get_state_density()
         elif self.state_type == 'position':
             return self._get_state_probabilistic_position()
+        elif self.state_type == 'mean_speed':
+            return self._get_state_mean_speed()
+        elif self.state_type == 'queue':
+            return self._get_state_queue()
+        elif self.state_type == 'vehicle_types_emergency':
+            return self._get_state_vehicle_types_emergency()
         elif self.state_type == 'density_and_speed':
             return self._get_state_density_and_speed()
         elif self.state_type == 'density_speed_emergency':
@@ -124,10 +138,67 @@ class SumoEnv:
             return self._get_state_density_speed_vehicle_types(['bus'])
         elif self.state_type == 'density_speed_bus_emergency':
             return self._get_state_density_speed_vehicle_types(['bus', 'emergency'])
-        elif self.state_type == 'density_queue_phases':
+        elif self.state_type == 'density_queue':
             return self._get_state_density_queue_phases()
+        elif self.state_type == 'density_queue_mean_speed':
+            return self._get_state_density_queue_mean_speed()
         else:
             raise NotImplementedError
+
+    def _get_state_vehicle_types_emergency(self):
+        env_state = {}
+        for intersection in self.road_structure:
+            num_of_phases = self.road_structure[intersection]['num_of_phases']
+            num_of_lanes = self.road_structure[intersection]['num_of_lanes']
+
+            # Prepare empty state of fixed size.
+            # TODO: consider moving this to parsing part. The empty state is same during all time...
+            state = np.zeros(num_of_lanes + num_of_phases, dtype=np.float32)
+
+            for ilane, (lane_id, _) in enumerate(self.road_structure[intersection]['lanes']):
+                num_requested = sum(traci.vehicle.getTypeID(id) == 'emergency'
+                                    for id in traci.lane.getLastStepVehicleIDs(lane_id))
+                state[ilane] = num_requested
+            # Adding phase as one hot vector to state.
+            state[num_of_lanes: num_of_lanes + num_of_phases] = \
+                np.eye(num_of_phases)[traci.trafficlight.getPhase(intersection)]
+
+            env_state[intersection] = state
+        return env_state
+
+    def _get_state_queue(self):
+        env_state = {}
+
+        for intersection in self.road_structure:
+            num_of_phases = self.road_structure[intersection]['num_of_phases']
+            num_of_lanes = self.road_structure[intersection]['num_of_lanes']
+
+            queue = self._get_lanes_queue(self.road_structure[intersection]['lanes'])
+            # Adding phase as one hot vector.
+            phases = np.eye(num_of_phases)[traci.trafficlight.getPhase(intersection)]
+            state = np.concatenate((queue, phases), axis=None)
+            env_state[intersection] = state
+        return env_state
+
+    def _get_state_mean_speed(self):
+        env_state = {}
+
+        for intersection in self.road_structure:
+            num_of_phases = self.road_structure[intersection]['num_of_phases']
+            num_of_lanes = self.road_structure[intersection]['num_of_lanes']
+
+            # Prepare empty state of fixed size.
+            state = np.zeros(num_of_lanes + num_of_phases, dtype=np.float32)
+
+            for ilane, (lane_id, _) in enumerate(self.road_structure[intersection]['lanes']):
+                state[ilane] = traci.lane.getLastStepMeanSpeed(lane_id)  # add mean speed
+
+            # Adding phase as one hot vector to state.
+            state[num_of_lanes: num_of_lanes + num_of_phases] = \
+                np.eye(num_of_phases)[traci.trafficlight.getPhase(intersection)]
+
+            env_state[intersection] = state
+        return env_state
 
     def _get_state_density_speed_vehicle_types(self, types):
         '''
@@ -224,9 +295,25 @@ class SumoEnv:
                 state[ilane] = traci.lane.getLastStepOccupancy(lane_id)
 
                 # Adding phase as one hot vector to state.
-                state[num_of_lanes: num_of_lanes + num_of_phases] = \
+            state[num_of_lanes: num_of_lanes + num_of_phases] = \
                     np.eye(num_of_phases)[traci.trafficlight.getPhase(intersection)]
 
+            env_state[intersection] = state
+        return env_state
+
+    def _get_state_density_queue_mean_speed(self):
+        env_state = {}
+
+        for intersection in self.road_structure:
+            num_of_phases = self.road_structure[intersection]['num_of_phases']
+
+            density = self._get_lanes_density(self.road_structure[intersection]['lanes'])
+            queue = self._get_lanes_queue(self.road_structure[intersection]['lanes'])
+            mean_speed = self._get_lanes_mean_speed(self.road_structure[intersection]['lanes'])
+            # Adding phase as one hot vector.
+            phases = np.eye(num_of_phases)[traci.trafficlight.getPhase(intersection)]
+
+            state = np.concatenate((density,queue,mean_speed,phases), axis=None)
             env_state[intersection] = state
         return env_state
 
@@ -383,6 +470,10 @@ class SumoEnv:
                 for lane, _ in lanes]
 
     @staticmethod
+    def _get_lanes_mean_speed(lanes):
+        return [round(traci.lane.getLastStepMeanSpeed(lane), 3) for lane, _ in lanes]
+
+    @staticmethod
     def _get_lanes_density(lanes):
         total_vehicle_length = 7.5
         return [round(min(1, traci.lane.getLastStepVehicleNumber(lane) /
@@ -501,6 +592,29 @@ class SumoEnv:
             absolute_reward_dict[intersection] = absolute_reward
         return absolute_reward_dict
 
+    def _calc_reward_wt_total_acc(self):
+        result_dict = {}
+        for intersection in self.road_structure:
+            veh_list = []
+            for lane_id, _ in self.road_structure[intersection]['lanes']:
+                car_ids = traci.lane.getLastStepVehicleIDs(lane_id)
+                veh_list += car_ids
+
+            wait_time = 0.0
+            for veh in veh_list:
+                veh_edge = traci.lane.getEdgeID(traci.vehicle.getLaneID(veh))
+                acc = traci.vehicle.getAccumulatedWaitingTime(veh)
+                if veh not in self.vehicles:
+                    self.vehicles[veh] = {veh_edge : acc}
+                else:
+                    #self.vehicles[veh][veh_edge] = acc
+                    self.vehicles[veh][veh_edge] = acc - sum(
+                        [self.vehicles[veh][lane] for lane in self.vehicles[veh].keys() if lane != veh_edge])
+                # Total waiting time of all vehicles
+                wait_time += self.vehicles[veh][veh_edge]
+            result_dict[intersection] =  ((-1)*wait_time)
+        return result_dict
+
     def _calc_reward_wt_relative_acc(self):
         result_dict = {}
         for intersection in self.road_structure:
@@ -597,7 +711,7 @@ class SumoEnv:
                     curr_wt = traci.vehicle.getWaitingTime(car_id)
                     if max_wt < curr_wt:
                         max_wt = curr_wt
-            wt_max_reward = - max_wt
+            wt_max_reward = - float(max_wt)
             wt_max_reward_dict[intersection] = wt_max_reward
         return wt_max_reward_dict
 

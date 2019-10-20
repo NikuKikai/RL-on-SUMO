@@ -35,7 +35,8 @@ def gen_video(path, delete_images=True):
         print("There is no images in the folders")
         return
 
-    frame = cv2.imread(os.path.join(path, image_paths[0]))
+    frame = cv2.imread(image_paths[0])
+    #frame = cv2.imread(os.path.join(path, image_paths[0]))
     height, width, layers = frame.shape
 
     fps = 24 # frames per second.
