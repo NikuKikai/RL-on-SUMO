@@ -41,7 +41,7 @@ class Experiment():
                 manager.teach_agents()  # try to optimize if enough samples in memory.
                 state = next_state
 
-            manager.dump_data_on_episode_end(self.res_dir_path, plot=self.show_training_curve)
+            manager.dump_data_on_episode_end(self.res_dir_path)
             self.env.close()
 
     def train_with_different_reward_types(self):
