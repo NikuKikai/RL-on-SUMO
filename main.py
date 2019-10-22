@@ -78,6 +78,7 @@ def main(arguments):
         for key in vars(arguments):
             file.write(str(key) + ': ' + str(vars(arguments)[key]) + '\n')
 
+
     manager = TrafficSystemManager(env.get_dimensions(), arguments)
     for epi in range(arguments.episodes):
         print("### Starting Episode: ", epi, ' ###')
