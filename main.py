@@ -1,9 +1,11 @@
-from experiments import Experiment
-from rl_args import fixed_q_targets_single_intersection_args
-from rl_args import fixed_q_targets_double_intersection_args
-from rl_args import double_dqn_single_intersection_args
-from rl_args import double_dqn_double_intersection_args
-import argparse
+from Experiments.experiments import Experiment
+from Agents.rl_args import *
+from utils.process_args import process_arguments
+from Environment.sumoenv import SumoEnv
+from Environment.traffic_system_manager import TrafficSystemManager
+from datetime import datetime
+import os
+
 ### disable some plt warnings.
 import warnings
 import matplotlib.cbook
@@ -11,153 +13,90 @@ warnings.filterwarnings("ignore", category=matplotlib.cbook.mplDeprecation)
 ###
 
 
-def load_agents_args(agent, network_type):
-    if agent == 'fixed_q_targets':
-        if network_type == 'single':
-            return fixed_q_targets_single_intersection_args()
-        elif network_type == 'double':
-            return fixed_q_targets_double_intersection_args()
-        else:
-            print("Unsupported network")
-            exit()
-    elif agent == 'double_dqn':
-        if network_type == 'single':
-            return double_dqn_single_intersection_args()
-        elif network_type == 'double':
-            return double_dqn_double_intersection_args()
-        else:
-            print("Unsupported network")
-            exit()
-    else:
-        print("Unsupported agent")
-        exit()
 
-def process_arguments():
-    parser = argparse.ArgumentParser(formatter_class=argparse.RawDescriptionHelpFormatter,
-                                     description="Reinforcement learning project - Traffic lights control" \
-                                                 "\nTechnion - Israel institute of technology\n" \
-                                                 "Authors:\n" \
-                                                 "\tAlexey Tusov, tusovalexey[at]gmail.com\n" \
-                                                 "\tPavel Rastopchin, pavelr[at]gmail.com\n" \
-                                                 "\tAmeen Ali, ameen.ali[at]gmail.com",
-                                     epilog="example usage:" \
-                                            "python ./main.py")
-    parser.add_argument("-sc", "--sumo-cfg", type=str, default='networks/single/Israel/network.sumocfg', dest='cfg',
-                        help='path to desired simulation configuration file, default: networks/single/Israel/network.sumocfg')
-    parser.add_argument("-a", "--agent", type=str, default='fixed_q_targets', dest='agent',
-                        help='RL agent to use, supported agents: [fixed_q_targets, double_dqn] , default: fixed_q_targets')
-    args, remaining = parser.parse_known_args()
-    agent = args.agent
-    network_type = args.cfg.split('/')[1] # parsing network type - single / double
-    agents_args = load_agents_args(agent, network_type)
-    parser.add_argument("-e", "--episodes", type=int, default=agents_args.episodes, dest='episodes',
-                        help='Number of episodes for simulation, default: agent\'s default value')
-    parser.add_argument("-bs", "--batch-size", type=int, default=agents_args.batch_size, dest='batch_size',
-                        help='Batch size, default: agent\'s default value')
-    parser.add_argument("-eps", "--epsilon-decay", type=float, default=agents_args.eps_decay, dest='epsilon_decay',
-                        help='Epsilon decay rate, default: agent\'s default value')
-    parser.add_argument("-st", "--state-type", type=str, default=agents_args.state_type, dest='state_type',
-                        help='State representation type, supported types: [density, position, '
-                             'density_and_speed, density_speed_emergency, density_speed_bus,'
-                             ' density_speed_bus_emergency], default: agent\'s default type')
-    parser.add_argument("-rt", "--reward-type", type=str, default=agents_args.reward_type, dest='reward_type',
-                        help='Reward calculation type, supported types: [ wt_sum_absolute, wt_avg_absolute,'
-                             'wt_sum_relative, wt_max, accumulated_wt_max, wt_squares_sum,'
-                             'wt_parametric, wt_vehicle_class], default: agent\'s default type')
-    parser.add_argument("-nn", "--nn-layers", nargs='+', type=int, default=agents_args.layers, dest='nn_layers',
-                        help='NN layers, input example: 10 20 40 would be translated to [10, 20, 40],'
-                             ' default: agent\'s default type')
-    parser.add_argument("-lp", "--log-path", type=str, default=agents_args.logs_root_path, dest='log_path',
-                        help='Root dir for result logs, default: agent\'s default type')
-    parser.add_argument("-gc", "--grad-clip", type=int, default=agents_args.grad_clip, dest='grad_clip',
-                        help='Grad clip value, default: agent\'s default value')
-    parser.add_argument("-ta", "--target-update", type=int, default=agents_args.target_update, dest='target_update',
-                        help='Each how many steps to update target nn, default: agent\'s default value')
-    parser.add_argument("-ce", "--capture-each", type=int, default=agents_args.capture_each, dest='capture_each',
-                        help='Each how many episodes to capture, default: agent\'s default value')
-    parser.add_argument("-rs", "--replay_size", type=int, default=agents_args.replay_size, dest='replay_size',
-                        help='Capacity of replay buffer, default: agent\'s default value')
-    parser.add_argument("-sl", "--sim-length", type=int, default=agents_args.sim_max_steps, dest='sim_length',
-                        help='Simulation length in steps, default: agent\'s default value')
-    parser.add_argument("-gd", "--gui-disable", default=agents_args.gui, action='store_false', dest='gui',
-                        help='Disable simulator GUI, default: agent\'s default value')
-    args, remaining = parser.parse_known_args()
-    # Update agents arguments based on parsed users arguments
-    agents_args.episodes = args.episodes
-    agents_args.batch_size = args.batch_size
-    agents_args.eps_decay = args.epsilon_decay
-    agents_args.state_type = args.state_type
-    agents_args.reward_type = args.reward_type
-    agents_args.layers = args.nn_layers
-    agents_args.logs_root_path = args.log_path
-    agents_args.grad_clip = args.grad_clip
-    agents_args.target_update = args.target_update
-    agents_args.capture_each = args.capture_each
-    agents_args.replay_size = args.replay_size
-    agents_args.sim_max_steps = args.sim_length
-    agents_args.sim_file = args.cfg
-    agents_args.gui = args.gui
-    # Optional future params
-    #parser.add_argument("-load", default=False, action='store_true', dest='load',
-    #                    help='load saved weights and net data from training, default: False')
-    #parser.add_argument("-save", default=False, action='store_true', dest='save',
-    #                    help='save network weights and net data after training for future use, default: False')
-    parser.add_argument("-m", "--mode", type=str, default='experiment', dest='mode',
-                        help='Execution mode: test, train or experiment, default: experiment')
-    args = parser.parse_args()
-    # Update logs dir depend on execution mode
-    agents_args.experiment_res_path = agents_args.logs_root_path + args.mode + '/'
-    return args.mode, agents_args
-
-def main_experiment(args):
-    # # Experiment 1
-    args = fixed_q_targets_single_intersection_args()
-    args.target_update = 50
-    exp = Experiment(args)
-    exp.train_default()
-    args = fixed_q_targets_single_intersection_args()
-    args.target_update = 0.001
-    exp = Experiment(args)
-    exp.train_default()
-
-    # # Experiment 2
-    args = fixed_q_targets_double_intersection_args()
-    args.target_update = 50
-    exp = Experiment(args)
-    exp.train_default()
-    args = fixed_q_targets_double_intersection_args()
-    args.target_update = 0.001
-    exp = Experiment(args)
-    exp.train_default()
-
-    # # Experiment 3
-    args = double_dqn_single_intersection_args()
-    args.target_update = 50
-    exp = Experiment(args)
-    exp.train_default()
-    args = double_dqn_single_intersection_args()
-    args.target_update = 0.001
-    exp = Experiment(args)
-    exp.train_default()
-
-    # Experiment 4
-    args = double_dqn_double_intersection_args()
-    args.target_update = 50
-    exp = Experiment(args)
-    exp.train_default()
-    args = double_dqn_double_intersection_args()
-    args.grad_clip = True
-    exp = Experiment(args)
-    exp.train_default()
+def main_experiment(arguments):
+    list_experiments = [
+        {'path': './logs/compare/density__wt_max/', 'stype': 'density', 'rtype': 'wt_max'},
+        {'path': './logs/compare/position__wt_max/', 'stype': 'position', 'rtype': 'wt_max'},
+        {'path': './logs/compare/mean_speed__wt_max/', 'stype': 'mean_speed', 'rtype': 'wt_max'},
+        {'path': './logs/compare/queue__wt_max/', 'stype': 'queue', 'rtype': 'wt_max'},
+        {'path': './logs/compare/vehicle_types_emergency__wt_max/', 'stype': 'vehicle_types_emergency',
+         'rtype': 'wt_max'},
+        {'path': './logs/compare/density_and_speed__wt_max/', 'stype': 'density_and_speed', 'rtype': 'wt_max'},
+        {'path': './logs/compare/density_speed_emergency__wt_max/', 'stype': 'density_speed_emergency',
+         'rtype': 'wt_max'},
+        {'path': './logs/compare/density_queue__wt_max/', 'stype': 'density_queue', 'rtype': 'wt_max'},
+        {'path': './logs/compare/density_queue_mean_speed__wt_max/', 'stype': 'density_queue_mean_speed',
+         'rtype': 'wt_max'},
+        {'path': './logs/compare/density__wt_total_acc_relative/', 'stype': 'density', 'rtype': 'wt_total_acc_relative'},
+        {'path': './logs/compare/position__wt_total_acc_relative/', 'stype': 'position',
+         'rtype': 'wt_total_acc_relative'},
+        {'path': './logs/compare/mean_speed__wt_total_acc_relative/', 'stype': 'mean_speed',
+         'rtype': 'wt_total_acc_relative'},
+        {'path': './logs/compare/queue__wt_total_acc_relative/', 'stype': 'queue', 'rtype': 'wt_total_acc_relative'},
+        {'path': './logs/compare/vehicle_types_emergency__wt_total_acc_relative/', 'stype': 'vehicle_types_emergency',
+         'rtype': 'wt_total_acc_relative'},
+        {'path': './logs/compare/density_and_speed__wt_total_acc_relative/', 'stype': 'density_and_speed',
+         'rtype': 'wt_total_acc_relative'},
+        {'path': './logs/compare/density_speed_emergency__wt_total_acc_relative/', 'stype': 'density_speed_emergency',
+         'rtype': 'wt_total_acc_relative'},
+        {'path': './logs/compare/density_queue__wt_total_acc_relative/', 'stype': 'density_queue',
+         'rtype': 'wt_total_acc_relative'},
+        {'path': './logs/compare/density_queue_mean_speed__wt_total_acc_relative/', 'stype': 'density_queue_mean_speed',
+         'rtype': 'wt_total_acc_relative'},
+        {'path': './logs/compare/vehicle_types_emergency__wt_vehicle_class/', 'stype': 'vehicle_types_emergency',
+         'rtype': 'wt_vehicle_class'},
+        {'path': './logs/compare/density_speed_emergency__wt_max/', 'stype': 'density_speed_emergency',
+         'rtype': 'wt_max'},
+    ]
+    for exp_dict in list_experiments:
+        arguments.experiment_res_path = exp_dict['path']
+        arguments.state_type = exp_dict['stype']
+        arguments.reward_type = exp_dict['rtype']
+        exp = Experiment(arguments)
+        exp.train_default()
     return
 
-def main(args):
-    exp = Experiment(args)
-    exp.train_default()
+
+def main(arguments):
+    # Create folder for experiments results
+    root_path = arguments.experiment_res_path
+    if not os.path.exists(root_path):
+        os.makedirs(root_path)
+    timestamp = str(datetime.now()).replace(':', '_').replace('-', '_').replace('.', '_').replace(' ', '_')
+    sim_name = os.path.split(arguments.sim_file)[1].split('.')[0]
+    folder_name = timestamp + '_' + arguments.rl_algo + '_' + sim_name
+    res_dir_path = os.path.join(root_path, folder_name)
+    os.makedirs(res_dir_path)
+
+    # Create env.
+    env = SumoEnv(arguments, capture_path=res_dir_path)
+
+    # Save args
+    args_file_path = os.path.join(res_dir_path, 'args.txt')
+    with open(args_file_path, 'a') as file:
+        for key in vars(arguments):
+            file.write(str(key) + ': ' + str(vars(arguments)[key]) + '\n')
+
+    manager = TrafficSystemManager(env.get_dimensions(), arguments)
+    for epi in range(arguments.episodes):
+        print("### Starting Episode: ", epi, ' ###')
+        state = env.reset(heatup=arguments.sim_heatup)
+        done = False
+        while not done:
+            action = manager.select_action(state)
+            next_state, reward, done = env.do_step(action)
+            manager.add_to_memory(state, action, next_state, reward)
+            manager.teach_agents()  # try to optimize if enough samples in memory.
+            state = next_state
+
+        manager.dump_data_on_episode_end(res_dir_path)
+        env.close()
     return
+
 
 if __name__ == '__main__':
-    mode ,args = process_arguments()
+    mode, args = process_arguments()
     if mode == 'experiment':
         main_experiment(args)
     else:

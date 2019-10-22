@@ -1,11 +1,8 @@
 import numpy as np
-import sumoenv as se
+from Environment import sumoenv as se
 import matplotlib.pyplot as plt
-from rl_agents import Fixed_Q_Targets_Agent
-from rl_agents import DQN_Agent
-from rl_agents import Cyclic_Agent
-from rl_args import fixed_q_targets_args
-from rl_args import dqn_args
+from Agents.rl_agents import Fixed_Q_Targets_Agent
+from Agents.rl_args import fixed_q_targets_args
 
 args = fixed_q_targets_args()
 #args = dqn_args()

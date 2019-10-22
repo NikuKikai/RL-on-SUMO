@@ -1,6 +1,7 @@
 import torch
 from torch import nn
 from torch.nn.functional import relu
+#torch.set_default_tensor_type('torch.DoubleTensor')
 # WORK IN PROCESS
 class DQN_GENERAL(nn.Module):
     def __init__(self, inputs, outputs, layers=[128, 64, 16]):

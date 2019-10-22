@@ -1,5 +1,5 @@
-from sumoenv import SumoEnv
-from traffic_system_manager import TrafficSystemManager
+from Environment.sumoenv import SumoEnv
+from Environment.traffic_system_manager import TrafficSystemManager
 import matplotlib.pyplot as plt
 import os
 from datetime import datetime
@@ -53,7 +53,7 @@ class Experiment():
         for reward_type in ['wt_sum_absolute', 'wt_sum_relative', 'wt_max', 'accumulated_wt_max', 'wt_squares_sum']:
             print("### Reward type: ", reward_type,' ###')
             self.args.reward_type = reward_type
-            self.env = SumoEnv(self.args, path_to_sim_file='simulations\\israel_double_intersection.sumocfg',
+            self.env = SumoEnv(self.args, path_to_sim_file='./networks/double/Israel/network.sumocfg',
                                   gui=False)
             manager = TrafficSystemManager(self.env.get_dimensions(), self.args)
             for _ in range(self.args.episodes):
