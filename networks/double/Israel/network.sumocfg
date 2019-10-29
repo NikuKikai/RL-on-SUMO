@@ -1,7 +1,7 @@
 <configuration>
     <input>
-       <net-file value="xmls/network.net.xml"/>
-       <route-files value="xmls/network.trip.xml"/>
+       <net-file value="xmls\network.net.xml"/>
+       <route-files value="xmls\network.trip.xml"/>
     </input>
 	<time-to-teleport value="-1"/>
 </configuration>
