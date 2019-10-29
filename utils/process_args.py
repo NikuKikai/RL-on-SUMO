@@ -98,7 +98,7 @@ def process_arguments():
     #parser.add_argument("-save", default=False, action='store_true', dest='save',
     #                    help='save network weights and net data after training for future use, default: False')
     parser.add_argument("-m", "--mode", type=str, default='experiment', dest='mode',
-                        help='Execution mode: test, train or experiment, default: experiment')
+                        help='Execution mode: basic or experiment, default: experiment')
     args = parser.parse_args()
     # Update logs dir depend on execution mode
     agents_args.experiment_res_path = agents_args.logs_root_path + args.mode + '/'
