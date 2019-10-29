@@ -14,6 +14,12 @@ warnings.filterwarnings("ignore", category=matplotlib.cbook.mplDeprecation)
 ###
 
 def main(arguments):
+    '''
+    Basic usage of the environment and the TSM (traffic system manager).
+    :param arguments:
+    :return:
+    '''
+
     # Create folder for experiments results
     root_path = arguments.experiment_res_path
     if not os.path.exists(root_path):
@@ -27,13 +33,16 @@ def main(arguments):
     # Create env.
     env = SumoEnv(arguments, capture_path=res_dir_path)
 
-    # Save args
+    # Save args.
     args_file_path = os.path.join(res_dir_path, 'args.txt')
     with open(args_file_path, 'a') as file:
         for key in vars(arguments):
             file.write(str(key) + ': ' + str(vars(arguments)[key]) + '\n')
 
+    # Create the TSM.
     manager = TrafficSystemManager(env.get_dimensions(), arguments)
+
+    # Training episodes.
     for epi in range(arguments.episodes):
         print("### Starting Episode: ", epi, ' ###')
         state = env.reset(heatup=arguments.sim_heatup)
@@ -45,6 +54,7 @@ def main(arguments):
             manager.teach_agents()  # try to optimize if enough samples in memory.
             state = next_state
 
+        # Plot and dump statistics and learning curves.
         manager.dump_data_on_episode_end(res_dir_path, plot=True)
         env.close()
     return
@@ -57,5 +67,5 @@ if __name__ == '__main__':
         main_experiment(args)
     else:
         # Execute basic usage
-        args = cyclic_agent_double_intersection_args()
+        args = random_agent_double_intersection_args()
         main(args)
