@@ -61,6 +61,14 @@ class cyclic_agent_double_intersection_args(double_intersection_args):
         self.rl_algo = 'cyclic'
         self.episodes = 150
 
+
+class random_agent_double_intersection_args(double_intersection_args):
+    def __init__(self):
+        super().__init__()
+        self.rl_algo = 'random'
+        self.episodes = 150
+
+
 class fixed_q_targets_single_intersection_args(single_intersection_args):
     '''
     After experimenting we came up with those params.
