@@ -37,7 +37,7 @@ class single_intersection_args(default_args):
     def __init__(self):
         super().__init__()
         # Simulation params
-        self.sim_file = 'simulations\\israel_single_intersection.sumocfg'
+        self.sim_file = './networks/single/Israel/network.sumocfg'
         # RL param
         self.episodes = 100  # 200 should be enough
         self.eps_decay = 100  # exploration decay rate. bigger is slower. Don't set it above 10000 - it too slow.
@@ -46,7 +46,7 @@ class double_intersection_args(default_args):
     def __init__(self):
         super().__init__()
         # Simulation params
-        self.sim_file = 'simulations\\israel_double_intersection.sumocfg'
+        self.sim_file = './networks/double/Israel/network.sumocfg' # or Israel_zipping/network.sumocfg
         # RL param
         self.episodes = 150 # 300
         self.eps_decay = 100  # exploration decay rate. bigger is slower. Don't set it above 10000 - it too slow.
@@ -55,11 +55,15 @@ class double_intersection_args(default_args):
 '''
 ### ARGUMENTS FOR DIFFERENT AGENTS AND DIFFERENT ENVIRONMENTS ###
 '''
+class cyclic_agent_double_intersection_args(double_intersection_args):
+    def __init__(self):
+        super().__init__()
+        self.rl_algo = 'cyclic'
+        self.episodes = 150
 
 class fixed_q_targets_single_intersection_args(single_intersection_args):
     '''
-    After experimenting I (pavel) came up with those params.
-    It should be compared with other agents.
+    After experimenting we came up with those params.
     '''
     def __init__(self):
         super().__init__()
@@ -97,7 +101,7 @@ class fixed_q_targets_double_intersection_args(double_intersection_args):
 
 class double_dqn_double_intersection_args(double_intersection_args):
     '''
-    No optimal args found
+    After experimenting we came up with those params.
     '''
     def __init__(self):
         super().__init__()
