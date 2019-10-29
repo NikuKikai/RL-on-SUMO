@@ -1,5 +1,7 @@
 from Agents.rl_agents import Fixed_Q_Targets_Agent
 from Agents.rl_agents import Double_DQN_Agent
+from Agents.stupid_agents import Cyclic_Agent
+from Agents.stupid_agents import Random_Agent
 import numpy as np
 import matplotlib.pyplot as plt
 import os
@@ -26,6 +28,10 @@ class TrafficSystemManager:
                 self.agents_dict[intersection_name] = Fixed_Q_Targets_Agent(input_state_size, num_of_actions, rl_args)
             elif rl_args.rl_algo == 'double_dqn':
                 self.agents_dict[intersection_name] = Double_DQN_Agent(input_state_size, num_of_actions, rl_args)
+            elif rl_args.rl_algo == 'cyclic':
+                self.agents_dict[intersection_name] = Cyclic_Agent(num_of_actions)
+            elif rl_args.rl_algo == 'random':
+                self.agents_dict[intersection_name] = Random_Agent(num_of_actions)
             else:
                 raise NotImplementedError
 
@@ -78,6 +84,11 @@ class TrafficSystemManager:
         saves checkpoints of policy nets if they got best reward.
         '''
         for key in self.rewards_dict:
+
+            if not hasattr(self.agents_dict[key], 'policy_net'):
+                # If agent doesn't have dqn, there is nothing to save.
+                continue
+
             cur_avg_reward = np.mean(self.rewards_dict[key])
             if cur_avg_reward > self.best_avg_reward[key]:
                 self.best_avg_reward[key] = cur_avg_reward
