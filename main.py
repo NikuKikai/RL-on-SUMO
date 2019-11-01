@@ -67,5 +67,5 @@ if __name__ == '__main__':
         main_experiment(args)
     else:
         # Execute basic usage
-        args = random_agent_double_intersection_args()
+        args = double_dqn_double_intersection_args()
         main(args)
