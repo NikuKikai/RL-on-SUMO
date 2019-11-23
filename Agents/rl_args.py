@@ -13,8 +13,9 @@ class default_args():
         # Simulation params
         self.sim_heatup = 20  # simulation run this amount of steps after reset.
         self.sim_max_steps = 3000 # 3000 # simulation ends after this amount of steps.
-        self.sim_steps_per_do_step = 3  # simulation steps performed between two actions.
-        self.gui = False
+        self.sim_steps_per_do_step = 6  # simulation steps performed between two actions.
+        self.yellow_phase_duration = 3  # simulation steps performed between two actions.
+        self.gui = False #'enable'
         self.state_type = 'density_and_speed'  # 'density', 'position', 'density_and_speed'
         self.reward_type = 'wt_sum_absolute'  # 'wt_sum_absolute', 'wt_avg_absolute', 'wt_sum_relative', 'wt_max', 'accumulated_wt_max', 'wt_squares_sum'
 
@@ -46,7 +47,7 @@ class double_intersection_args(default_args):
     def __init__(self):
         super().__init__()
         # Simulation params
-        self.sim_file = './networks/double/Israel/network.sumocfg' # or Israel_zipping/network.sumocfg
+        self.sim_file = './networks/double/Israel_zipping_yellow_light/network.sumocfg' # './networks/double/Israel/network.sumocfg'
         # RL param
         self.episodes = 150 # 300
         self.eps_decay = 100  # exploration decay rate. bigger is slower. Don't set it above 10000 - it too slow.
