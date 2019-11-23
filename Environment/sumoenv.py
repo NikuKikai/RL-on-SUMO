@@ -41,6 +41,7 @@ class SumoEnv:
         self.steps_done = 0
         # How much simulation steps perfromed each step_d call.
         self.sim_steps = args.sim_steps_per_do_step
+        self.yellow_phase_duration = args.yellow_phase_duration
 
         if 'SUMO_HOME' in os.environ:
             tools = os.path.join(os.environ['SUMO_HOME'], 'tools')
@@ -145,6 +146,18 @@ class SumoEnv:
         else:
             raise NotImplementedError
 
+    def _get_current_phase(self, intersection):
+        '''
+        This function maps current sumo phase idx to rl phase idx.
+        This mapping happens as we don't want to know about yellow phases.
+        :return: rl phase idx
+        '''
+        sumo_phase_idx = traci.trafficlight.getPhase(intersection)
+        for key in self.road_structure[intersection]['phases_dict'].keys():
+            phase = self.road_structure[intersection]['phases_dict'][key]
+            if phase.phase_sumo_index == sumo_phase_idx:
+                return phase.phase_rl_index
+
     def _get_state_vehicle_types_emergency(self):
         env_state = {}
         for intersection in self.road_structure:
@@ -161,7 +174,7 @@ class SumoEnv:
                 state[ilane] = num_requested
             # Adding phase as one hot vector to state.
             state[num_of_lanes: num_of_lanes + num_of_phases] = \
-                np.eye(num_of_phases)[traci.trafficlight.getPhase(intersection)]
+                np.eye(num_of_phases)[self._get_current_phase(intersection)]
 
             env_state[intersection] = state
         return env_state
@@ -175,7 +188,7 @@ class SumoEnv:
 
             queue = self._get_lanes_queue(self.road_structure[intersection]['lanes'])
             # Adding phase as one hot vector.
-            phases = np.eye(num_of_phases)[traci.trafficlight.getPhase(intersection)]
+            phases = np.eye(num_of_phases)[self._get_current_phase(intersection)]
             state = np.concatenate((queue, phases), axis=None)
             env_state[intersection] = state
         return env_state
@@ -195,7 +208,7 @@ class SumoEnv:
 
             # Adding phase as one hot vector to state.
             state[num_of_lanes: num_of_lanes + num_of_phases] = \
-                np.eye(num_of_phases)[traci.trafficlight.getPhase(intersection)]
+                np.eye(num_of_phases)[self._get_current_phase(intersection)]
 
             env_state[intersection] = state
         return env_state
@@ -236,7 +249,7 @@ class SumoEnv:
 
             # Adding phase as one hot vector to state.
             state[states_per_lane * num_of_lanes: states_per_lane * num_of_lanes + num_of_phases] = \
-                np.eye(num_of_phases)[traci.trafficlight.getPhase(intersection)]
+                np.eye(num_of_phases)[self._get_current_phase(intersection)]
 
             env_state[intersection] = state
         return env_state
@@ -267,7 +280,7 @@ class SumoEnv:
 
             # Adding phase as one hot vector to state.
             state[2 * num_of_lanes: 2 * num_of_lanes + num_of_phases] = \
-                    np.eye(num_of_phases)[traci.trafficlight.getPhase(intersection)]
+                    np.eye(num_of_phases)[self._get_current_phase(intersection)]
 
             env_state[intersection] = state
         return env_state
@@ -296,7 +309,7 @@ class SumoEnv:
 
                 # Adding phase as one hot vector to state.
             state[num_of_lanes: num_of_lanes + num_of_phases] = \
-                    np.eye(num_of_phases)[traci.trafficlight.getPhase(intersection)]
+                    np.eye(num_of_phases)[self._get_current_phase(intersection)]
 
             env_state[intersection] = state
         return env_state
@@ -311,7 +324,7 @@ class SumoEnv:
             queue = self._get_lanes_queue(self.road_structure[intersection]['lanes'])
             mean_speed = self._get_lanes_mean_speed(self.road_structure[intersection]['lanes'])
             # Adding phase as one hot vector.
-            phases = np.eye(num_of_phases)[traci.trafficlight.getPhase(intersection)]
+            phases = np.eye(num_of_phases)[self._get_current_phase(intersection)]
 
             state = np.concatenate((density,queue,mean_speed,phases), axis=None)
             env_state[intersection] = state
@@ -333,7 +346,7 @@ class SumoEnv:
             density = self._get_lanes_density(self.road_structure[intersection]['lanes'])
             queue = self._get_lanes_queue(self.road_structure[intersection]['lanes'])
             # Adding phase as one hot vector.
-            phases = np.eye(num_of_phases)[traci.trafficlight.getPhase(intersection)]
+            phases = np.eye(num_of_phases)[self._get_current_phase(intersection)]
 
             state = np.concatenate((density,queue,phases), axis=None)
             env_state[intersection] = state
@@ -390,7 +403,7 @@ class SumoEnv:
 
             # Adding phase as one hot vector to state.
             state[num_of_lanes * lane_len: num_of_lanes * lane_len + num_of_phases] = \
-                np.eye(num_of_phases)[traci.trafficlight.getPhase(intersection)]
+                np.eye(num_of_phases)[self._get_current_phase(intersection)]
 
             # Visialize the state:
             #if intersection == 'gneJ00':
@@ -424,15 +437,39 @@ class SumoEnv:
 
         self.steps_done += self.sim_steps
         done = False
-        mid_phases = dict()
+
         # Apply actions on intersection one by one.
         action_dict_copy = action_dict.copy()
+
+        # Apply yellow phases if needed
         for intersection in self.road_structure:
             action = np.squeeze(action_dict_copy[intersection])
-            traci.trafficlight.setPhase(intersection, action)
+
+            phase_idx = self.road_structure[intersection]['phases_dict'][action.item()].phase_sumo_index
+
+            current_phase_idx = traci.trafficlight.getPhase(intersection)
+
+            if current_phase_idx != phase_idx:
+                # Yellow phase of current phase should be applied
+                yellow_phase_idx = self.road_structure[intersection]['phases_dict'][self._get_current_phase(intersection)].yellow_phase_sumo_index
+                traci.trafficlight.setPhase(intersection, yellow_phase_idx)
+            else:
+                # Green phase apply
+                traci.trafficlight.setPhase(intersection, phase_idx)
 
         # Perform multiple steps of simulation.
-        for _ in range(self.sim_steps):
+        for _ in range(self.yellow_phase_duration):
+            self._sim_step()
+
+        # Apply green phases
+        for intersection in self.road_structure:
+            action = np.squeeze(action_dict_copy[intersection])
+            phase_idx = self.road_structure[intersection]['phases_dict'][action.item()].phase_sumo_index
+            traci.trafficlight.setPhase(intersection, phase_idx)
+
+        assert self.sim_steps-self.yellow_phase_duration > 0
+
+        for _ in range(self.sim_steps-self.yellow_phase_duration):
             self._sim_step()
 
         # Get the new_state of all intersections.
@@ -762,19 +799,58 @@ class SumoEnv:
             self.road_structure[junc]['lanes'] = tuple(zip(lanes_names, lanes_directions))
             self.road_structure[junc]['lane_len'] = ceil(max_len)
 
-            num_of_phases = len(traci.trafficlight.getCompleteRedYellowGreenDefinition(junc)[0].phases)
+            self.road_structure[junc]['phases_dict'] = self._parse_phases(junc)
+            num_of_phases = len(self.road_structure[junc]['phases_dict'])
             self.road_structure[junc]['num_of_phases'] = num_of_phases
 
-            phase_list = []
-            for idx in range(num_of_phases):
-                phase_list.append(
-                    (idx, traci.trafficlight.getCompleteRedYellowGreenDefinition(junc)[0].phases[idx].state))
-            self.road_structure[junc]['phases_description'] = phase_list
+            # phase_list = []
+            # for idx in range(num_of_phases):
+            #     phase_list.append(
+            #         (idx, traci.trafficlight.getCompleteRedYellowGreenDefinition(junc)[0].phases[idx].state))
+            # self.road_structure[junc]['phases_description'] = phase_list
+
             self.road_structure[junc]['last_wt'] = 0
 
         self.print_env()
 
         traci.close()
+
+    def _parse_phases(self, junc):
+        '''
+        This function parses the phases which should be pre-configured in sumo file.
+        Here we define two types of phases:
+        1) Green Phase - This phase makes the traffic to move, because it consists of green and red lights.
+            it's functional phase which can be predicted by RL agent.
+        2) Yellow Phase - This phase exists for sake of safety on the roads, it consists of yellow and red lights,
+            thus, it only stops the traffic. The RL Agent doesn't know about such phases and can't predict this phase.
+            Yellow phase will be applied only by the environment itself, between two actions, according to traffic
+            logic, i.e. the same logic Yellow light is lit between two green phases. If the simulation does not have
+            yellow phases, it's OK.
+        :return: pairs of Green and Yellow phases dictionary.
+        '''
+        phases_dict = {}
+        functional_phases_counter = 0
+        for idx, phase in enumerate(traci.trafficlight.getCompleteRedYellowGreenDefinition(junc)[0].phases):
+            if not self._is_yellow_phase(phase):
+                func_phase = Phase(idx, functional_phases_counter, phase.state)
+                phases_dict[functional_phases_counter] = func_phase
+            else:
+                phases_dict[functional_phases_counter]._add_yellow_phase(idx, phase.duration, phase.state)
+                functional_phases_counter += 1
+
+        for key in phases_dict.keys():
+            print(key)
+            phases_dict[key]._print_phase()
+
+        return phases_dict
+
+
+    def _is_yellow_phase(self, phase):
+        if 'y' in phase.state:
+            return True
+        else:
+            return False
+
 
     def _remove_repeating_lanes(self, lanes):
         '''
@@ -827,6 +903,27 @@ class SumoEnv:
         if self.f is not None:
             self.f.close()
         traci.close()
+
+class Phase():
+    def __init__(self, sumo_index, rl_index, description):
+        self.phase_sumo_index = sumo_index
+        self.phase_rl_index = rl_index
+        self.phase_description = description
+        self.yellow_phase_sumo_index = None
+        self.yellow_phase_description = None
+        self.yellow_phase_duration = None
+
+    def _add_yellow_phase(self, sumo_index, duration, description):
+        self.yellow_phase_sumo_index = sumo_index
+        self.yellow_phase_duration = duration
+        self.yellow_phase_description = description
+
+    def _print_phase(self):
+        print('phase sumo idx  :', self.phase_sumo_index)
+        print('phase rl   idx  :', self.phase_rl_index)
+        print('phase descripit :', self.phase_description)
+        print('yellow sumo idx :', self.yellow_phase_sumo_index)
+        print('yellow descripit:', self.yellow_phase_description)
 
 class ResultsWriter(object):
     def __init__(self, keys, filename, header='', extra_keys=()):
